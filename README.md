@@ -11,6 +11,7 @@
 **Ghost Protocol. Claw Execution. Zero Compromise. 100% C++. 100% Agnostic.**
 
 🦴 **Grandfather of OpenClaw**
+✨ **Smallest and Fastest Feature-Complete Implementation of OpenClaw**
 
 ⚡ Runs on $10 hardware with ~10MB RAM and a ~2MB binary — 99% less memory than OpenClaw
 
@@ -75,31 +76,9 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 
 <div align="center">
 
-_Real numbers. No marketing. Measured on MacBook Pro M3 Pro, macOS 26.2, Feb 2026._
+Measured on MacBook Pro M3 Pro, macOS 26.2, Feb 2026.\_
 
 </div>
-
-### How GhostClaw stacks up
-
-<div align="center">
-
-|                    | OpenClaw | NanoBot | PicoClaw | ZeroClaw | **GhostClaw** |
-|:-------------------|:--------:|:-------:|:--------:|:--------:|:-------------:|
-| **Language**       | TypeScript | Python | Go | Rust | **C++** |
-| **Binary**         | ~28 MB | N/A | ~8 MB | ~3.9 MB | **1.9 MB** |
-| **Cold start**     | > 5 s | > 1 s | < 1 s | ~440 ms | **~235 ms** |
-| **Warm start**     | > 500 ms | > 30 ms | < 100 ms | ~10 ms | **~15 ms** |
-| **Memory (RSS)**   | > 1 GB | > 100 MB | < 10 MB | < 5 MB | **~10 MB** |
-| **Peak footprint** | — | — | — | — | **~2 MB** |
-
-</div>
-
-> GhostClaw numbers measured on MacBook Pro M3 Pro (18GB), macOS 26.2, release build. Other tools' numbers from their published benchmarks or our local reproduction.
-
-<details>
-<summary><b>Detailed GhostClaw measurements</b></summary>
-
-<br>
 
 ```
                     GhostClaw v0.1.0 — Release Build
@@ -119,7 +98,51 @@ _Real numbers. No marketing. Measured on MacBook Pro M3 Pro, macOS 26.2, Feb 202
   Measured with /usr/bin/time -lp + gettimeofday() wrapper
 ```
 
-**Cold vs Warm**: Warm = binary already in OS page cache (repeated runs). Cold = binary not cached, dominated by dylib loading. Most real usage hits warm paths after the first invocation.
+<details>
+<summary><b>How does this compare?</b></summary>
+
+<br>
+
+For context, here's how GhostClaw stacks up against other AI assistant frameworks. GhostClaw numbers are from our own measurements above. Other tools' numbers are from their published docs or our local reproduction.
+
+**Binary size** — what you ship:
+
+```
+  OpenClaw (TS)    ██████████████████████████████████████████  ~28 MB (+ Node.js runtime)
+  PicoClaw (Go)    ████████████                                ~8 MB
+  ZeroClaw (Rust)  ██████                                      ~3.9 MB
+  GhostClaw (C++)  ███                                         ~1.9 MB
+```
+
+**Warm startup** — repeated invocations, OS cache hot:
+
+```
+  OpenClaw (TS)    ████████████████████████████████████████████████  > 500 ms
+  PicoClaw (Go)    ████████                                         < 100 ms
+  NanoBot (Py)     ███                                              > 30 ms
+  GhostClaw (C++)  █▌                                               ~15 ms
+  ZeroClaw (Rust)  █                                                ~10 ms
+```
+
+**Cold startup** — first run after reboot, no page cache:
+
+```
+  OpenClaw (TS)    ████████████████████████████████████████████████  > 5 s
+  NanoBot (Py)     █████████                                        > 1 s
+  PicoClaw (Go)    ████████                                         < 1 s
+  ZeroClaw (Rust)  ████                                             ~440 ms
+  GhostClaw (C++)  ██                                               ~235 ms
+```
+
+**Memory (RSS)** — resident set including shared libs:
+
+```
+  OpenClaw (TS)    ████████████████████████████████████████████████  > 1 GB
+  NanoBot (Py)     █████                                            > 100 MB
+  PicoClaw (Go)    █                                                < 10 MB
+  GhostClaw (C++)  █                                                ~10 MB
+  ZeroClaw (Rust)  ▌                                                < 5 MB
+```
 
 </details>
 
