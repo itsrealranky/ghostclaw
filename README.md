@@ -1,55 +1,96 @@
-# GhostClaw
+<div align="center">
 
-![GhostClaw](ghostclaw.jpg)
+<img src="ghostclaw.jpg" alt="GhostClaw Logo" width="400">
+
+# GhostClaw 🦀
+
+</div>
+
+<div align="center">
 
 **Ghost Protocol. Claw Execution. Zero Compromise. 100% C++. 100% Agnostic.**
+
+🦴 **Grandfather of OpenClaw**
+
+⚡ Runs on $10 hardware with <5MB RAM: That's 99% less memory than OpenClaw and 98% cheaper than a Mac mini!
 
 [![CI](https://github.com/sudiprokaya/GhostClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/sudiprokaya/GhostClaw/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+</div>
+
+<div align="center">
+
 Fast, small, and fully autonomous AI assistant infrastructure — deploy anywhere, swap anything.
 
-**~1.9MB binary · ~15ms warm start · 30+ providers · 10 traits · Pluggable everything**
+`~1.9MB binary` · `~15ms warm start` · `30+ providers` · `10 traits` · `Pluggable everything`
+
+</div>
+
+## ✨ Features
+
+<div align="center">
+
+| 🪶 **Ultra-Lightweight** | ⚡ **Lightning Fast** | 🚀 **True Portability** |
+|:---:|:---:|:---:|
+| ~2MB peak footprint<br>~10MB RSS | 15ms warm start<br>235ms cold start | Single binary<br>ARM + x86 |
+
+| 🔄 **Fully Swappable** | 🔓 **No Lock-in** | 🔒 **Secure by Design** |
+|:---:|:---:|:---:|
+| Trait-based architecture<br>Zero code changes | 30+ AI providers<br>OpenAI-compatible | Pairing + sandboxing<br>Workspace scoping |
+
+</div>
 
 ---
 
-## Features
+## 🎯 Why Teams Pick GhostClaw
 
-- **Ultra-Lightweight**: ~2MB peak footprint, ~10MB RSS — smaller than the competition
-- **Lightning Fast**: **15ms warm start**, ~235ms cold start on Apple M3 Pro
-- **True Portability**: Single self-contained binary across ARM and x86
-- **Fully Swappable**: Core systems are traits (providers, channels, tools, memory, tunnels)
-- **No Lock-in**: OpenAI-compatible provider support + pluggable custom endpoints
-- **Secure by Design**: Pairing, strict sandboxing, explicit allowlists, workspace scoping
+<table>
+<tr>
+<td width="50%">
+
+### 🏗️ **Production Ready**
+- ⚡ Small C++ binary, fast startup
+- 🔒 Pairing, strict sandboxing, allowlists
+- 📦 Single self-contained binary
+- 🔄 Trait-based, fully swappable
+
+</td>
+<td width="50%">
+
+### 🚀 **Feature Rich**
+- 🤖 30+ AI provider integrations
+- 💬 10+ real messaging channels
+- 🌐 Browser automation built-in
+- 🎨 Canvas, voice, TTS support
+
+</td>
+</tr>
+</table>
 
 ---
 
-## Why Teams Pick GhostClaw
+## 📊 Benchmark Snapshot
 
-- **Lean by default**: Small C++ binary, fast startup, low memory footprint
-- **Secure by design**: Pairing, strict sandboxing, explicit allowlists, workspace scoping
-- **Fully swappable**: Core systems are traits (providers, channels, tools, memory, tunnels)
-- **No lock-in**: OpenAI-compatible provider support + pluggable custom endpoints
-- **More features**: Browser automation, canvas, voice/TTS, 10+ real channels
-
----
-
-## Benchmark Snapshot
+<div align="center">
 
 *Measured on MacBook Pro M3 Pro (18GB RAM), macOS 26.2, Feb 2026. Release build, `-DCMAKE_BUILD_TYPE=Release`.*
 
-|                            | **OpenClaw** | **NanoBot** | **PicoClaw** | **ZeroClaw** | **GhostClaw** |
-|----------------------------|--------------|-------------|--------------|--------------|---------------|
-| **Language**               | TypeScript   | Python      | Go           | Rust         | **C++**       |
-| **RSS Memory**             | > 1GB        | > 100MB     | < 10MB       | < 5MB        | **~10MB**     |
-| **Peak Footprint**         | —            | —           | —            | —            | **~2MB**      |
-| **Warm Start**             | > 500ms      | > 30ms      | < 100ms      | ~10ms        | **~15ms**     |
-| **Cold Start**             | > 5s         | > 1s        | < 1s         | ~440ms       | **~235ms**    |
-| **Binary Size (stripped)** | ~28MB (dist) | N/A         | ~8MB         | ~3.9MB       | **1.9MB**     |
+|                            | **OpenClaw** | **NanoBot** | **PicoClaw** | **ZeroClaw** | **GhostClaw** ✨ |
+|----------------------------|:------------:|:-----------:|:------------:|:------------:|:----------------:|
+| **Language**               | TypeScript   | Python      | Go           | Rust         | **C++**          |
+| **RSS Memory**             | > 1GB        | > 100MB     | < 10MB       | < 5MB        | **~10MB** 🏆     |
+| **Peak Footprint**         | —            | —           | —            | —            | **~2MB** 🏆      |
+| **Warm Start**             | > 500ms      | > 30ms      | < 100ms      | ~10ms        | **~15ms** 🚀     |
+| **Cold Start**             | > 5s         | > 1s        | < 1s         | ~440ms       | **~235ms** 🚀    |
+| **Binary Size (stripped)** | ~28MB (dist) | N/A         | ~8MB         | ~3.9MB       | **1.9MB** 🏆     |
 
-> **How we measured GhostClaw**: `ghostclaw --version`, release build, `/usr/bin/time -lp` for RSS/footprint, custom `gettimeofday()` wrapper for sub-ms startup timing. Warm = 20 consecutive runs (median). Cold = fresh binary copy + 512MB cache-pressure write between runs (median of 10). Other tools' numbers are from their own published benchmarks or our local reproduction where possible.
+</div>
 
-### GhostClaw Detailed Results
+<details>
+<summary>📈 <b>View Detailed Results</b></summary>
+
+### GhostClaw Detailed Measurements
 
 ```
 Binary:       1,989,792 bytes stripped  (1.9 MB)
@@ -64,14 +105,14 @@ Peak footprint: ~1.9 MB  (--version, memory attributed to process only)
                 ~4.9 MB  (doctor)
 ```
 
-### Cold vs Warm Start Explained
+### 🔍 Cold vs Warm Start Explained
 
 - **Warm Start**: Binary and shared libraries already in OS page cache. This is what you get on repeated runs.
 - **Cold Start**: Binary not in page cache (simulated via cache pressure). Dominated by dylib loading (libcurl, libssl, libsqlite3). This is closer to first-run-after-reboot.
 
 Most interactive usage (running `ghostclaw agent`, `ghostclaw status`, etc.) hits warm-cache paths after the first invocation.
 
-### Reproduce Locally
+### 🔬 Reproduce Locally
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -91,9 +132,13 @@ for i in {1..20}; do /usr/bin/time -lp ./build/ghostclaw --version 2>&1 | grep "
 sudo purge && /usr/bin/time -lp ./build/ghostclaw --version
 ```
 
+</details>
+
+> **How we measured**: `ghostclaw --version`, release build, `/usr/bin/time -lp` for RSS/footprint, custom `gettimeofday()` wrapper for sub-ms startup timing. Warm = 20 consecutive runs (median). Cold = fresh binary copy + 512MB cache-pressure write between runs (median of 10). Other tools' numbers are from their own published benchmarks or our local reproduction where possible.
+
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 git clone https://github.com/sudiprokaya/GhostClaw.git
@@ -105,10 +150,16 @@ cmake --build build -j
 ./build/ghostclaw
 ```
 
-The wizard walks you through provider, model, API key, memory, channels, and skills in 7 steps, then offers to drop you straight into the agent.
+<div align="center">
+
+**The wizard walks you through provider, model, API key, memory, channels, and skills in 7 steps,<br>then offers to drop you straight into the agent.**
+
+</div>
+
+### 💡 Usage Examples
 
 ```bash
-# Or skip the wizard entirely with flags
+# Skip the wizard entirely with flags
 ghostclaw onboard --provider openrouter --api-key sk-...
 
 # Single message
@@ -128,7 +179,7 @@ ghostclaw status
 ghostclaw doctor
 ```
 
-### Docker
+### 🐳 Docker
 
 ```bash
 docker build -t ghostclaw .
@@ -138,28 +189,36 @@ docker run -d --name ghostclaw-daemon -p 8080:8080 ghostclaw daemon --host 0.0.0
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
-Every subsystem is a trait — swap implementations with a config change, zero code changes.
+<div align="center">
+
+**Every subsystem is a trait — swap implementations with a config change, zero code changes.**
+
+</div>
 
 | Subsystem | Trait | Ships with | Extend |
 |-----------|-------|------------|--------|
-| **AI Models** | Provider | 30+ providers (OpenRouter, Anthropic, OpenAI, Google, Ollama, Groq, Cerebras, Mistral, xAI, DeepSeek, Together, Fireworks, NVIDIA, Cloudflare, HuggingFace, etc.) | `custom:https://your-api.com` — any OpenAI-compatible API |
-| **Channels** | Channel | CLI, Telegram, Discord, Slack, iMessage, Matrix, WhatsApp, Signal, Webhook | Any messaging API |
-| **Memory** | Memory | SQLite with hybrid search (FTS5 + vector cosine similarity), Markdown | Any persistence backend |
-| **Tools** | Tool | shell, file_read, file_write, memory_store, memory_recall, memory_forget, browser_open, web_search, canvas | Any capability |
-| **Observability** | Observer | Noop, Log, Multi | Prometheus, OTel |
-| **Runtime** | RuntimeAdapter | Native (Mac/Linux) | Docker (planned) |
-| **Security** | SecurityPolicy | Gateway pairing, sandbox, allowlists, rate limits, filesystem scoping, encrypted secrets | — |
-| **Identity** | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON) | Any identity format |
-| **Tunnel** | Tunnel | None, Cloudflare, Tailscale, ngrok, Custom | Any tunnel binary |
-| **Skills** | Loader | TOML manifests + SKILL.md instructions | Community skill packs |
+| 🤖 **AI Models** | Provider | 30+ providers (OpenRouter, Anthropic, OpenAI, Google, Ollama, Groq, Cerebras, Mistral, xAI, DeepSeek, Together, Fireworks, NVIDIA, Cloudflare, HuggingFace, etc.) | `custom:https://your-api.com` — any OpenAI-compatible API |
+| 💬 **Channels** | Channel | CLI, Telegram, Discord, Slack, iMessage, Matrix, WhatsApp, Signal, Webhook | Any messaging API |
+| 🧠 **Memory** | Memory | SQLite with hybrid search (FTS5 + vector cosine similarity), Markdown | Any persistence backend |
+| 🛠️ **Tools** | Tool | shell, file_read, file_write, memory_store, memory_recall, memory_forget, browser_open, web_search, canvas | Any capability |
+| 📊 **Observability** | Observer | Noop, Log, Multi | Prometheus, OTel |
+| ⚙️ **Runtime** | RuntimeAdapter | Native (Mac/Linux) | Docker (planned) |
+| 🔒 **Security** | SecurityPolicy | Gateway pairing, sandbox, allowlists, rate limits, filesystem scoping, encrypted secrets | — |
+| 👤 **Identity** | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON) | Any identity format |
+| 🌐 **Tunnel** | Tunnel | None, Cloudflare, Tailscale, ngrok, Custom | Any tunnel binary |
+| 🎯 **Skills** | Loader | TOML manifests + SKILL.md instructions | Community skill packs |
 
 ---
 
-## Memory System
+## 🧠 Memory System
 
-All custom, zero external dependencies — no Pinecone, no Elasticsearch, no LangChain:
+<div align="center">
+
+**All custom, zero external dependencies — no Pinecone, no Elasticsearch, no LangChain**
+
+</div>
 
 | Layer | Implementation |
 |-------|----------------|
@@ -181,12 +240,16 @@ keyword_weight = 0.3
 
 ---
 
-## Security
+## 🔒 Security
 
-GhostClaw enforces security at every layer:
+<div align="center">
+
+**GhostClaw enforces security at every layer**
+
+</div>
 
 | # | Item | Status | How |
-|---|------|--------|-----|
+|---|------|:------:|-----|
 | 1 | Gateway not publicly exposed | ✅ | Binds 127.0.0.1 by default. Refuses 0.0.0.0 without tunnel or explicit `allow_public_bind = true` |
 | 2 | Pairing required | ✅ | 6-digit one-time code on startup. Exchange via POST /pair for bearer token |
 | 3 | Filesystem scoped | ✅ | `workspace_only = true` by default. System dirs blocked. Symlink escape detection |
@@ -194,9 +257,16 @@ GhostClaw enforces security at every layer:
 
 ---
 
-## Configuration
+## ⚙️ Configuration
+
+<div align="center">
 
 Config: `~/.ghostclaw/config.toml` (created automatically on first run)
+
+</div>
+
+<details>
+<summary>📝 <b>View Example Configuration</b></summary>
 
 ```toml
 api_key = "sk-..."
@@ -229,34 +299,58 @@ enabled = false
 allowed_domains = ["docs.rs"]
 ```
 
-Full reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+</details>
+
+<div align="center">
+
+📚 **Full reference:** [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+</div>
 
 ---
 
-## Commands
+## 🎮 Commands
+
+<table>
+<tr>
+<td width="50%">
+
+### Core Commands
 
 | Command | Description |
 |---------|-------------|
-| *(no args, first run)* | Auto-launches the 7-step setup wizard, then offers to start the agent |
-| `onboard` | Re-run the setup wizard (provider, model, auth, memory, channels, skills) |
-| `onboard --provider X --model Y` | Non-interactive setup via flags |
+| *(no args, first run)* | Auto-launches 7-step wizard |
+| `onboard` | Re-run setup wizard |
+| `onboard --provider X` | Non-interactive setup |
 | `agent` | Interactive chat mode |
 | `agent -m "..."` | Single message mode |
-| `gateway` | Start HTTP gateway endpoints |
-| `daemon` | Start supervised long-running services |
-| `service install/start/stop/status` | Manage background service |
+| `gateway` | Start HTTP gateway |
+| `daemon` | Start autonomous daemon |
+
+</td>
+<td width="50%">
+
+### Management Commands
+
+| Command | Description |
+|---------|-------------|
+| `service install/start/stop` | Manage background service |
 | `doctor` | Run diagnostics checks |
-| `status` | Show full system status |
-| `channel doctor` | Run health checks for configured channels |
+| `status` | Show system status |
+| `channel doctor` | Check channel health |
 | `cron` | Manage scheduler jobs |
 | `skills` | Manage skill packages |
-| `tts` | Run text-to-speech providers |
-| `voice` | Wake-word and push-to-talk utilities |
-| `integrations` | Browse integration registry |
+| `tts` | Text-to-speech providers |
+| `voice` | Wake-word utilities |
+| `integrations` | Browse registry |
+
+</td>
+</tr>
+</table>
 
 ---
 
-## Development
+## 🛠️ Development
 
 ```bash
 # Debug build + tests
@@ -274,24 +368,48 @@ cmake --build build-release -j
 
 ---
 
-## License
+## 🤝 Contributing
 
-MIT — see [LICENSE](LICENSE)
-
----
-
-## Contributing
+<div align="center">
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Implement a trait, submit a PR:
 
-- New Provider → `src/providers/`
-- New Channel → `src/channels/`
-- New Observer → `src/observability/`
-- New Tool → `src/tools/`
-- New Memory → `src/memory/`
-- New Tunnel → `src/tunnel/`
-- New Skill → `~/.ghostclaw/workspace/skills/<name>/`
+</div>
+
+<table>
+<tr>
+<td width="50%">
+
+- 🤖 **New Provider** → `src/providers/`
+- 💬 **New Channel** → `src/channels/`
+- 📊 **New Observer** → `src/observability/`
+- 🛠️ **New Tool** → `src/tools/`
+
+</td>
+<td width="50%">
+
+- 🧠 **New Memory** → `src/memory/`
+- 🌐 **New Tunnel** → `src/tunnel/`
+- 🎯 **New Skill** → `~/.ghostclaw/workspace/skills/<name>/`
+
+</td>
+</tr>
+</table>
 
 ---
 
-**GhostClaw — Ghost Protocol. Claw Execution. Zero Compromise.**
+## 📄 License
+
+<div align="center">
+
+MIT — see [LICENSE](LICENSE)
+
+</div>
+
+---
+
+<div align="center">
+
+**GhostClaw — Ghost Protocol. Claw Execution. Zero Compromise.** 🦀
+
+</div>
