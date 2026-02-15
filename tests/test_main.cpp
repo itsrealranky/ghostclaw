@@ -29,6 +29,7 @@ void register_skills_integration_tests(std::vector<ghostclaw::tests::TestCase> &
 void register_security_integration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_sessions_tools_nodes_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_full_integration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_multi_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 
 int main() {
   // Ignore SIGPIPE to prevent crashes when output is piped
@@ -61,6 +62,7 @@ int main() {
   register_security_integration_tests(tests);
   register_sessions_tools_nodes_tests(tests);
   register_full_integration_tests(tests);
+  register_multi_tests(tests);
 
   std::size_t passed = 0;
   std::size_t failed = 0;

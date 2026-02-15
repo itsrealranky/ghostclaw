@@ -204,6 +204,30 @@ struct SecretsConfig {
   bool encrypt = true;
 };
 
+struct AgentConfig {
+  std::string id;
+  std::string provider;
+  std::string model;
+  double temperature = 0.7;
+  std::string workspace_directory;
+  std::string system_prompt;
+  std::optional<std::string> api_key;
+};
+
+struct TeamConfig {
+  std::string id;
+  std::vector<std::string> agents;
+  std::string leader_agent;
+  std::string description;
+};
+
+struct MultiConfig {
+  std::string default_agent = "ghostclaw";
+  std::size_t max_internal_messages = 50;
+  std::vector<AgentConfig> agents;
+  std::vector<TeamConfig> teams;
+};
+
 struct Config {
   std::optional<std::string> api_key;
   std::string default_provider = "openrouter";
@@ -227,6 +251,7 @@ struct Config {
   ComposioConfig composio;
   IdentityConfig identity;
   SecretsConfig secrets;
+  MultiConfig multi;
 };
 
 } // namespace ghostclaw::config

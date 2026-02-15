@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cctype>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -333,6 +334,62 @@ bool provider_is_known(const std::string &provider) {
   return false;
 }
 
+void load_multi_config(Config &config, const common::TomlDocument &doc) {
+  config.multi.default_agent = doc.get_string("multi.default_agent", config.multi.default_agent);
+  config.multi.max_internal_messages = static_cast<std::size_t>(
+      doc.get_u64("multi.max_internal_messages", config.multi.max_internal_messages));
+
+  // Discover agent IDs by scanning keys starting with "agents."
+  std::set<std::string> agent_ids;
+  for (const auto &[key, val] : doc.values) {
+    if (common::starts_with(key, "agents.")) {
+      // key format: "agents.<id>.<field>"
+      const auto after = key.substr(7); // skip "agents."
+      const auto dot = after.find('.');
+      if (dot != std::string::npos) {
+        agent_ids.insert(after.substr(0, dot));
+      }
+    }
+  }
+
+  for (const auto &id : agent_ids) {
+    AgentConfig agent;
+    agent.id = id;
+    const std::string prefix = "agents." + id + ".";
+    agent.provider = doc.get_string(prefix + "provider");
+    agent.model = doc.get_string(prefix + "model");
+    agent.temperature = doc.get_double(prefix + "temperature", agent.temperature);
+    agent.workspace_directory = doc.get_string(prefix + "workspace_directory");
+    agent.system_prompt = doc.get_string(prefix + "system_prompt");
+    if (doc.has(prefix + "api_key")) {
+      agent.api_key = expand_config_value(doc.get_string(prefix + "api_key"));
+    }
+    config.multi.agents.push_back(std::move(agent));
+  }
+
+  // Discover team IDs by scanning keys starting with "teams."
+  std::set<std::string> team_ids;
+  for (const auto &[key, val] : doc.values) {
+    if (common::starts_with(key, "teams.")) {
+      const auto after = key.substr(6); // skip "teams."
+      const auto dot = after.find('.');
+      if (dot != std::string::npos) {
+        team_ids.insert(after.substr(0, dot));
+      }
+    }
+  }
+
+  for (const auto &id : team_ids) {
+    TeamConfig team;
+    team.id = id;
+    const std::string prefix = "teams." + id + ".";
+    team.agents = doc.get_string_array(prefix + "agents");
+    team.leader_agent = doc.get_string(prefix + "leader_agent");
+    team.description = doc.get_string(prefix + "description");
+    config.multi.teams.push_back(std::move(team));
+  }
+}
+
 std::string bool_to_toml(bool value) { return value ? "true" : "false"; }
 
 std::string string_array_to_toml(const std::vector<std::string> &values) {
@@ -587,6 +644,7 @@ common::Result<Config> load_config() {
 
   load_channel_config(config, doc);
   load_tunnel_config(config, doc);
+  load_multi_config(config, doc);
 
   config.observability.backend = doc.get_string("observability.backend", config.observability.backend);
   config.runtime.kind = doc.get_string("runtime.kind", config.runtime.kind);
@@ -863,6 +921,44 @@ common::Status save_config(const Config &config) {
   file << "\n[secrets]\n";
   file << "encrypt = " << bool_to_toml(config.secrets.encrypt) << "\n";
 
+  if (!config.multi.agents.empty() || !config.multi.teams.empty() ||
+      config.multi.default_agent != "ghostclaw" || config.multi.max_internal_messages != 50) {
+    file << "\n[multi]\n";
+    file << "default_agent = " << common::quote_toml_string(config.multi.default_agent) << "\n";
+    file << "max_internal_messages = " << config.multi.max_internal_messages << "\n";
+
+    for (const auto &agent : config.multi.agents) {
+      file << "\n[agents." << agent.id << "]\n";
+      if (!agent.provider.empty()) {
+        file << "provider = " << common::quote_toml_string(agent.provider) << "\n";
+      }
+      if (!agent.model.empty()) {
+        file << "model = " << common::quote_toml_string(agent.model) << "\n";
+      }
+      file << "temperature = " << agent.temperature << "\n";
+      if (!agent.workspace_directory.empty()) {
+        file << "workspace_directory = " << common::quote_toml_string(agent.workspace_directory) << "\n";
+      }
+      if (!agent.system_prompt.empty()) {
+        file << "system_prompt = " << common::quote_toml_string(agent.system_prompt) << "\n";
+      }
+      if (agent.api_key.has_value()) {
+        file << "api_key = " << common::quote_toml_string(*agent.api_key) << "\n";
+      }
+    }
+
+    for (const auto &team : config.multi.teams) {
+      file << "\n[teams." << team.id << "]\n";
+      file << "agents = " << string_array_to_toml(team.agents) << "\n";
+      if (!team.leader_agent.empty()) {
+        file << "leader_agent = " << common::quote_toml_string(team.leader_agent) << "\n";
+      }
+      if (!team.description.empty()) {
+        file << "description = " << common::quote_toml_string(team.description) << "\n";
+      }
+    }
+  }
+
   file.close();
   if (!file) {
     return common::Status::error("Failed writing temporary config file");
@@ -1032,6 +1128,42 @@ common::Result<std::vector<std::string>> validate_config(const Config &config) {
   if (config.channels.webhook.has_value() && config.channels.webhook->secret.empty()) {
     return common::Result<std::vector<std::string>>::failure(
         "channels.webhook.secret is required when webhook is configured");
+  }
+
+  // Multi-agent validation
+  std::set<std::string> known_agent_ids;
+  for (const auto &agent : config.multi.agents) {
+    known_agent_ids.insert(agent.id);
+  }
+
+  for (const auto &team : config.multi.teams) {
+    for (const auto &member : team.agents) {
+      if (known_agent_ids.find(member) == known_agent_ids.end()) {
+        return common::Result<std::vector<std::string>>::failure(
+            "team '" + team.id + "' references unknown agent '" + member + "'");
+      }
+    }
+    if (!team.leader_agent.empty()) {
+      bool leader_in_team = false;
+      for (const auto &member : team.agents) {
+        if (member == team.leader_agent) {
+          leader_in_team = true;
+          break;
+        }
+      }
+      if (!leader_in_team) {
+        return common::Result<std::vector<std::string>>::failure(
+            "team '" + team.id + "' leader_agent '" + team.leader_agent +
+            "' is not in the team's agent list");
+      }
+    }
+  }
+
+  if (!config.multi.default_agent.empty() && !config.multi.agents.empty()) {
+    if (known_agent_ids.find(config.multi.default_agent) == known_agent_ids.end()) {
+      warnings.push_back("multi.default_agent '" + config.multi.default_agent +
+                          "' does not match any configured agent");
+    }
   }
 
   return common::Result<std::vector<std::string>>::success(std::move(warnings));

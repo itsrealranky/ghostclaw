@@ -210,6 +210,9 @@ add_library(ghostclaw_lib
   src/tunnel/tailscale.cpp
   src/tunnel/custom.cpp
   src/tunnel/factory.cpp
+  src/multi/types.cpp
+  src/multi/agent_pool.cpp
+  src/multi/orchestrator.cpp
 )
 
 if(APPLE)
@@ -294,6 +297,7 @@ add_executable(ghostclaw_tests
   tests/integration/test_skills_integration.cpp
   tests/integration/test_security_integration.cpp
   tests/integration/test_full_integration.cpp
+  tests/test_multi.cpp
 )
 target_link_libraries(ghostclaw_tests PRIVATE ghostclaw_lib)
 target_include_directories(ghostclaw_tests PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/tests)

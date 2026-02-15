@@ -1,6 +1,8 @@
 #include "ghostclaw/cli/commands.hpp"
 
 #include "ghostclaw/auth/oauth.hpp"
+#include "ghostclaw/multi/agent_pool.hpp"
+#include "ghostclaw/multi/orchestrator.hpp"
 #include "ghostclaw/channels/channel_manager.hpp"
 #include "ghostclaw/common/fs.hpp"
 #include "ghostclaw/config/config.hpp"
@@ -1100,6 +1102,55 @@ int run_config(std::vector<std::string> args) {
   return 1;
 }
 
+int run_multi(std::vector<std::string> args) {
+  if (!config::config_exists()) {
+    std::cerr << "No configuration found. Run 'ghostclaw onboard' first.\n";
+    return 1;
+  }
+
+  auto context = runtime::RuntimeContext::from_disk();
+  if (!context.ok()) {
+    std::cerr << context.error() << "\n";
+    return 1;
+  }
+
+  const auto &config = context.value().config();
+  if (config.multi.agents.empty()) {
+    std::cerr << "No agents configured. Add [agents.<name>] sections to config.toml.\n";
+    std::cerr << "Example:\n";
+    std::cerr << "  [agents.coder]\n";
+    std::cerr << "  provider = \"anthropic\"\n";
+    std::cerr << "  model = \"claude-sonnet-4-20250514\"\n";
+    std::cerr << "  system_prompt = \"You are a senior software engineer.\"\n";
+    return 1;
+  }
+
+  auto workspace = config::workspace_dir();
+  if (!workspace.ok()) {
+    std::cerr << workspace.error() << "\n";
+    return 1;
+  }
+
+  auto pool = std::make_shared<multi::AgentPool>(config);
+  auto store = std::make_shared<sessions::SessionStore>(workspace.value() / "sessions");
+  multi::Orchestrator orchestrator(config, pool, store);
+
+  const bool daemon_mode = take_flag(args, "--daemon");
+  if (daemon_mode) {
+    orchestrator.start([](const std::string &agent_id, const std::string &text) {
+      std::cout << "[" << agent_id << "] " << text << "\n";
+    });
+    std::cout << "Multi-agent daemon started. Press Enter to stop...\n";
+    std::string line;
+    std::getline(std::cin, line);
+    orchestrator.stop();
+    return 0;
+  }
+
+  orchestrator.run_interactive();
+  return 0;
+}
+
 int run_login(std::vector<std::string> args) {
   if (take_flag(args, "--logout")) {
     auto status = auth::delete_tokens();
@@ -1156,6 +1207,7 @@ void print_help() {
   std::cout << BOLD << "  SERVICES" << RESET << "\n";
   std::cout << "  " << GREEN << "gateway" << RESET << DIM << "        Start HTTP/WebSocket API server" << RESET << "\n";
   std::cout << "  " << GREEN << "daemon" << RESET << DIM << "         Run as background daemon with channels" << RESET << "\n";
+  std::cout << "  " << GREEN << "multi" << RESET << DIM << "          Multi-agent team collaboration mode" << RESET << "\n";
   std::cout << "  " << GREEN << "channel" << RESET << DIM << "        Manage messaging channels (Telegram, Slack, etc)" << RESET << "\n\n";
 
   std::cout << BOLD << "  SKILLS & TOOLS" << RESET << "\n";
@@ -1296,6 +1348,9 @@ int run_cli(int argc, char **argv) {
   }
   if (subcommand == "integrations") {
     return run_integrations(std::move(args));
+  }
+  if (subcommand == "multi") {
+    return run_multi(std::move(args));
   }
   if (subcommand == "message") {
     return run_message(std::move(args));
