@@ -12,7 +12,7 @@
 
 🦴 **Grandfather of OpenClaw**
 
-⚡ Runs on $10 hardware with <5MB RAM: That's 99% less memory than OpenClaw and 98% cheaper than a Mac mini!
+⚡ Runs on $10 hardware with ~10MB RAM and a ~2MB binary — 99% less memory than OpenClaw
 
 [![CI](https://github.com/sudiprokaya/GhostClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/sudiprokaya/GhostClaw/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -31,12 +31,12 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 
 <div align="center">
 
-| 🪶 **Ultra-Lightweight** | ⚡ **Lightning Fast** | 🚀 **True Portability** |
-|:---:|:---:|:---:|
+|     🪶 **Ultra-Lightweight**     |        ⚡ **Lightning Fast**        |  🚀 **True Portability**   |
+| :------------------------------: | :---------------------------------: | :------------------------: |
 | ~2MB peak footprint<br>~10MB RSS | 15ms warm start<br>235ms cold start | Single binary<br>ARM + x86 |
 
-| 🔄 **Fully Swappable** | 🔓 **No Lock-in** | 🔒 **Secure by Design** |
-|:---:|:---:|:---:|
+|            🔄 **Fully Swappable**             |           🔓 **No Lock-in**           |          🔒 **Secure by Design**          |
+| :-------------------------------------------: | :-----------------------------------: | :---------------------------------------: |
 | Trait-based architecture<br>Zero code changes | 30+ AI providers<br>OpenAI-compatible | Pairing + sandboxing<br>Workspace scoping |
 
 </div>
@@ -50,6 +50,7 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 <td width="50%">
 
 ### 🏗️ **Production Ready**
+
 - ⚡ Small C++ binary, fast startup
 - 🔒 Pairing, strict sandboxing, allowlists
 - 📦 Single self-contained binary
@@ -59,6 +60,7 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 <td width="50%">
 
 ### 🚀 **Feature Rich**
+
 - 🤖 30+ AI provider integrations
 - 💬 10+ real messaging channels
 - 🌐 Browser automation built-in
@@ -74,7 +76,7 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 
 <div align="center">
 
-*Real numbers. No marketing. Measured on MacBook Pro M3 Pro, macOS 26.2, Feb 2026.*
+_Real numbers. No marketing. Measured on MacBook Pro M3 Pro, macOS 26.2, Feb 2026._
 
 </div>
 
@@ -104,6 +106,7 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 For context, here's how GhostClaw stacks up against other AI assistant frameworks. GhostClaw numbers are from our own measurements above. Other tools' numbers are from their published docs or our local reproduction.
 
 **Binary size** — what you ship:
+
 ```
   OpenClaw (TS)    ██████████████████████████████████████████  ~28 MB (+ Node.js runtime)
   PicoClaw (Go)    ████████████                                ~8 MB
@@ -112,6 +115,7 @@ For context, here's how GhostClaw stacks up against other AI assistant framework
 ```
 
 **Warm startup** — repeated invocations, OS cache hot:
+
 ```
   OpenClaw (TS)    ████████████████████████████████████████████████  > 500 ms
   PicoClaw (Go)    ████████                                         < 100 ms
@@ -121,6 +125,7 @@ For context, here's how GhostClaw stacks up against other AI assistant framework
 ```
 
 **Cold startup** — first run after reboot, no page cache:
+
 ```
   OpenClaw (TS)    ████████████████████████████████████████████████  > 5 s
   NanoBot (Py)     █████████                                        > 1 s
@@ -130,6 +135,7 @@ For context, here's how GhostClaw stacks up against other AI assistant framework
 ```
 
 **Memory (RSS)** — resident set including shared libs:
+
 ```
   OpenClaw (TS)    ████████████████████████████████████████████████  > 1 GB
   NanoBot (Py)     █████                                            > 100 MB
@@ -228,18 +234,18 @@ docker run -d --name ghostclaw-daemon -p 8080:8080 ghostclaw daemon --host 0.0.0
 
 </div>
 
-| Subsystem | Trait | Ships with | Extend |
-|-----------|-------|------------|--------|
-| 🤖 **AI Models** | Provider | 30+ providers (OpenRouter, Anthropic, OpenAI, Google, Ollama, Groq, Cerebras, Mistral, xAI, DeepSeek, Together, Fireworks, NVIDIA, Cloudflare, HuggingFace, etc.) | `custom:https://your-api.com` — any OpenAI-compatible API |
-| 💬 **Channels** | Channel | CLI, Telegram, Discord, Slack, iMessage, Matrix, WhatsApp, Signal, Webhook | Any messaging API |
-| 🧠 **Memory** | Memory | SQLite with hybrid search (FTS5 + vector cosine similarity), Markdown | Any persistence backend |
-| 🛠️ **Tools** | Tool | shell, file_read, file_write, memory_store, memory_recall, memory_forget, browser_open, web_search, canvas | Any capability |
-| 📊 **Observability** | Observer | Noop, Log, Multi | Prometheus, OTel |
-| ⚙️ **Runtime** | RuntimeAdapter | Native (Mac/Linux) | Docker (planned) |
-| 🔒 **Security** | SecurityPolicy | Gateway pairing, sandbox, allowlists, rate limits, filesystem scoping, encrypted secrets | — |
-| 👤 **Identity** | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON) | Any identity format |
-| 🌐 **Tunnel** | Tunnel | None, Cloudflare, Tailscale, ngrok, Custom | Any tunnel binary |
-| 🎯 **Skills** | Loader | TOML manifests + SKILL.md instructions | Community skill packs |
+| Subsystem            | Trait          | Ships with                                                                                                                                                        | Extend                                                    |
+| -------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 🤖 **AI Models**     | Provider       | 30+ providers (OpenRouter, Anthropic, OpenAI, Google, Ollama, Groq, Cerebras, Mistral, xAI, DeepSeek, Together, Fireworks, NVIDIA, Cloudflare, HuggingFace, etc.) | `custom:https://your-api.com` — any OpenAI-compatible API |
+| 💬 **Channels**      | Channel        | CLI, Telegram, Discord, Slack, iMessage, Matrix, WhatsApp, Signal, Webhook                                                                                        | Any messaging API                                         |
+| 🧠 **Memory**        | Memory         | SQLite with hybrid search (FTS5 + vector cosine similarity), Markdown                                                                                             | Any persistence backend                                   |
+| 🛠️ **Tools**         | Tool           | shell, file_read, file_write, memory_store, memory_recall, memory_forget, browser_open, web_search, canvas                                                        | Any capability                                            |
+| 📊 **Observability** | Observer       | Noop, Log, Multi                                                                                                                                                  | Prometheus, OTel                                          |
+| ⚙️ **Runtime**       | RuntimeAdapter | Native (Mac/Linux)                                                                                                                                                | Docker (planned)                                          |
+| 🔒 **Security**      | SecurityPolicy | Gateway pairing, sandbox, allowlists, rate limits, filesystem scoping, encrypted secrets                                                                          | —                                                         |
+| 👤 **Identity**      | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON)                                                                                                                            | Any identity format                                       |
+| 🌐 **Tunnel**        | Tunnel         | None, Cloudflare, Tailscale, ngrok, Custom                                                                                                                        | Any tunnel binary                                         |
+| 🎯 **Skills**        | Loader         | TOML manifests + SKILL.md instructions                                                                                                                            | Community skill packs                                     |
 
 ---
 
@@ -251,14 +257,14 @@ docker run -d --name ghostclaw-daemon -p 8080:8080 ghostclaw daemon --host 0.0.0
 
 </div>
 
-| Layer | Implementation |
-|-------|----------------|
-| **Vector DB** | Embeddings stored as BLOB in SQLite, cosine similarity search |
-| **Keyword Search** | FTS5 virtual tables with BM25 scoring |
-| **Hybrid Merge** | Custom weighted merge function |
-| **Embeddings** | EmbeddingProvider trait — OpenAI, local, or noop |
-| **Chunking** | Line-based markdown chunker with heading preservation |
-| **Caching** | SQLite embedding_cache table with LRU eviction |
+| Layer              | Implementation                                                |
+| ------------------ | ------------------------------------------------------------- |
+| **Vector DB**      | Embeddings stored as BLOB in SQLite, cosine similarity search |
+| **Keyword Search** | FTS5 virtual tables with BM25 scoring                         |
+| **Hybrid Merge**   | Custom weighted merge function                                |
+| **Embeddings**     | EmbeddingProvider trait — OpenAI, local, or noop              |
+| **Chunking**       | Line-based markdown chunker with heading preservation         |
+| **Caching**        | SQLite embedding_cache table with LRU eviction                |
 
 ```toml
 [memory]
@@ -279,12 +285,12 @@ keyword_weight = 0.3
 
 </div>
 
-| # | Item | Status | How |
-|---|------|:------:|-----|
-| 1 | Gateway not publicly exposed | ✅ | Binds 127.0.0.1 by default. Refuses 0.0.0.0 without tunnel or explicit `allow_public_bind = true` |
-| 2 | Pairing required | ✅ | 6-digit one-time code on startup. Exchange via POST /pair for bearer token |
-| 3 | Filesystem scoped | ✅ | `workspace_only = true` by default. System dirs blocked. Symlink escape detection |
-| 4 | Access via tunnel only | ✅ | Gateway refuses public bind without active tunnel |
+| #   | Item                         | Status | How                                                                                               |
+| --- | ---------------------------- | :----: | ------------------------------------------------------------------------------------------------- |
+| 1   | Gateway not publicly exposed |   ✅   | Binds 127.0.0.1 by default. Refuses 0.0.0.0 without tunnel or explicit `allow_public_bind = true` |
+| 2   | Pairing required             |   ✅   | 6-digit one-time code on startup. Exchange via POST /pair for bearer token                        |
+| 3   | Filesystem scoped            |   ✅   | `workspace_only = true` by default. System dirs blocked. Symlink escape detection                 |
+| 4   | Access via tunnel only       |   ✅   | Gateway refuses public bind without active tunnel                                                 |
 
 ---
 
@@ -348,32 +354,32 @@ allowed_domains = ["docs.rs"]
 
 ### Core Commands
 
-| Command | Description |
-|---------|-------------|
-| *(no args, first run)* | Auto-launches 7-step wizard |
-| `onboard` | Re-run setup wizard |
-| `onboard --provider X` | Non-interactive setup |
-| `agent` | Interactive chat mode |
-| `agent -m "..."` | Single message mode |
-| `gateway` | Start HTTP gateway |
-| `daemon` | Start autonomous daemon |
+| Command                | Description                 |
+| ---------------------- | --------------------------- |
+| _(no args, first run)_ | Auto-launches 7-step wizard |
+| `onboard`              | Re-run setup wizard         |
+| `onboard --provider X` | Non-interactive setup       |
+| `agent`                | Interactive chat mode       |
+| `agent -m "..."`       | Single message mode         |
+| `gateway`              | Start HTTP gateway          |
+| `daemon`               | Start autonomous daemon     |
 
 </td>
 <td width="50%">
 
 ### Management Commands
 
-| Command | Description |
-|---------|-------------|
+| Command                      | Description               |
+| ---------------------------- | ------------------------- |
 | `service install/start/stop` | Manage background service |
-| `doctor` | Run diagnostics checks |
-| `status` | Show system status |
-| `channel doctor` | Check channel health |
-| `cron` | Manage scheduler jobs |
-| `skills` | Manage skill packages |
-| `tts` | Text-to-speech providers |
-| `voice` | Wake-word utilities |
-| `integrations` | Browse registry |
+| `doctor`                     | Run diagnostics checks    |
+| `status`                     | Show system status        |
+| `channel doctor`             | Check channel health      |
+| `cron`                       | Manage scheduler jobs     |
+| `skills`                     | Manage skill packages     |
+| `tts`                        | Text-to-speech providers  |
+| `voice`                      | Wake-word utilities       |
+| `integrations`               | Browse registry           |
 
 </td>
 </tr>
