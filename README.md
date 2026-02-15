@@ -14,7 +14,6 @@
 
 ⚡ Runs on $10 hardware with ~10MB RAM and a ~2MB binary — 99% less memory than OpenClaw
 
-[![CI](https://github.com/sudiprokaya/GhostClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/sudiprokaya/GhostClaw/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 </div>
