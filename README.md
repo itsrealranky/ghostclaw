@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="ghostclaw.jpg" alt="GhostClaw Logo" width="400">
+<img src="img/ghostclaw.jpg" alt="GhostClaw Logo" width="400">
 
 # GhostClaw 🦀
 
@@ -202,7 +202,14 @@ docker run -d --name ghostclaw-daemon -p 8080:8080 ghostclaw daemon --host 0.0.0
 
 **Every subsystem is a trait — swap implementations with a config change, zero code changes.**
 
+<img src="img/Ghostclaw_architecture.png" alt="GhostClaw Architecture" width="100%">
+
 </div>
+
+<details>
+<summary><b>📋 View Subsystem Details</b></summary>
+
+<br>
 
 | Subsystem            | Trait          | Ships with                                                                                                                                                        | Extend                                                    |
 | -------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -216,6 +223,8 @@ docker run -d --name ghostclaw-daemon -p 8080:8080 ghostclaw daemon --host 0.0.0
 | 👤 **Identity**      | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON)                                                                                                                            | Any identity format                                       |
 | 🌐 **Tunnel**        | Tunnel         | None, Cloudflare, Tailscale, ngrok, Custom                                                                                                                        | Any tunnel binary                                         |
 | 🎯 **Skills**        | Loader         | TOML manifests + SKILL.md instructions                                                                                                                            | Community skill packs                                     |
+
+</details>
 
 ---
 
