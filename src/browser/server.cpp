@@ -404,6 +404,9 @@ BrowserHttpResponse BrowserHttpServer::dispatch_for_test(const BrowserHttpReques
   if (request.method == "GET" && request.path == "/snapshot") {
     return handle_snapshot(request);
   }
+  if (request.method == "GET" && request.path == "/read") {
+    return handle_read(request);
+  }
   if (request.method == "POST" && request.path == "/act") {
     return handle_act(request);
   }
@@ -505,7 +508,6 @@ BrowserHttpResponse BrowserHttpServer::handle_screenshot(const BrowserHttpReques
 }
 
 BrowserHttpResponse BrowserHttpServer::handle_snapshot(const BrowserHttpRequest &request) {
-  (void)request;
   std::string tab_id;
   {
     std::lock_guard<std::mutex> lock(tabs_mutex_);
@@ -514,6 +516,36 @@ BrowserHttpResponse BrowserHttpServer::handle_snapshot(const BrowserHttpRequest 
 
   BrowserAction action;
   action.action = "snapshot";
+  // Forward query params to the action
+  for (const auto &[key, val] : request.query) {
+    action.params[key] = val;
+  }
+  action.params["tab_id"] = tab_id;
+  auto result = actions_.execute(action);
+  if (!result.ok()) {
+    return make_json_response(status_for_action_error(result.error()),
+                              "{\"error\":" + json_string(result.error()) + "}");
+  }
+
+  std::ostringstream out;
+  out << "{";
+  out << "\"status\":\"ok\",";
+  out << "\"tab_id\":" << json_string(tab_id) << ",";
+  out << "\"result\":" << encode_action_result(result.value());
+  out << "}";
+  return make_json_response(200, out.str());
+}
+
+BrowserHttpResponse BrowserHttpServer::handle_read(const BrowserHttpRequest &request) {
+  (void)request;
+  std::string tab_id;
+  {
+    std::lock_guard<std::mutex> lock(tabs_mutex_);
+    tab_id = ensure_active_tab_locked();
+  }
+
+  BrowserAction action;
+  action.action = "read";
   auto result = actions_.execute(action);
   if (!result.ok()) {
     return make_json_response(status_for_action_error(result.error()),

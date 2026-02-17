@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ghostclaw::config {
@@ -148,6 +149,8 @@ struct BrowserConfig {
   bool enabled = false;
   std::vector<std::string> allowed_domains;
   std::string session_name = "default";
+  bool stealth = false;
+  bool session_persistence = false;
 };
 
 struct ToolAllowConfig {
@@ -228,6 +231,40 @@ struct MultiConfig {
   std::vector<TeamConfig> teams;
 };
 
+struct ScheduleEntry {
+  std::string id;
+  std::string expression;
+  std::string command;
+  bool enabled = true;
+};
+
+struct DaemonConfig {
+  bool auto_start_schedules = true;
+  std::vector<ScheduleEntry> schedules;
+};
+
+struct McpServerConfig {
+  std::string id;
+  std::string command;
+  std::vector<std::string> args;
+  std::unordered_map<std::string, std::string> env;
+  bool enabled = true;
+};
+
+struct McpConfig {
+  std::vector<McpServerConfig> servers;
+};
+
+struct GoogleConfig {
+  std::string client_id;
+  std::string client_secret;
+  std::vector<std::string> scopes = {
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/calendar"};
+  std::uint16_t redirect_port = 8089;
+};
+
 struct Config {
   std::optional<std::string> api_key;
   std::string default_provider = "openrouter";
@@ -252,6 +289,9 @@ struct Config {
   IdentityConfig identity;
   SecretsConfig secrets;
   MultiConfig multi;
+  DaemonConfig daemon;
+  McpConfig mcp;
+  GoogleConfig google;
 };
 
 } // namespace ghostclaw::config

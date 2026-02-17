@@ -247,6 +247,22 @@ common::Status Daemon::start(const DaemonOptions &options) {
       return;
     }
     heartbeat::CronStore store(workspace.value() / "cron" / "jobs.db");
+
+    // Auto-register config-driven schedules
+    if (config_.daemon.auto_start_schedules) {
+      for (const auto &entry : config_.daemon.schedules) {
+        if (!entry.enabled) continue;
+        auto parsed = heartbeat::CronExpression::parse(entry.expression);
+        if (!parsed.ok()) continue;
+        heartbeat::CronJob job;
+        job.id = "config:" + entry.id;
+        job.expression = entry.expression;
+        job.command = entry.command;
+        job.next_run = parsed.value().next_occurrence();
+        (void)store.add_job(job);
+      }
+    }
+
     heartbeat::SchedulerConfig scheduler_config;
     scheduler_config.poll_interval =
         std::chrono::milliseconds(config_.reliability.scheduler_poll_secs * 1000);

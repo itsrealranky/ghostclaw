@@ -7,6 +7,7 @@ namespace ghostclaw::calendar {
 #if defined(__APPLE__)
 std::unique_ptr<ICalendarBackend> make_eventkit_calendar_backend();
 #endif
+std::unique_ptr<ICalendarBackend> make_google_calendar_backend(const config::Config &config);
 
 namespace {
 
@@ -50,13 +51,16 @@ std::unique_ptr<ICalendarBackend> make_calendar_backend(const config::Config &co
   if (backend == "gog") {
     return std::make_unique<GogCalendarBackend>();
   }
+  if (backend == "google") {
+    return make_google_calendar_backend(config);
+  }
 
 #if defined(__APPLE__)
   if (backend.empty() || backend == "auto" || backend == "eventkit") {
     return make_eventkit_calendar_backend();
   }
 #else
-  (void)config;
+  // config is used above for "google" backend
 #endif
   return std::make_unique<GogCalendarBackend>();
 }

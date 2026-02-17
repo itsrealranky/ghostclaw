@@ -17,7 +17,7 @@ std::string_view BrowserTool::name() const { return "browser"; }
 std::string_view BrowserTool::description() const { return "Run browser actions with allowlist"; }
 
 std::string BrowserTool::parameters_schema() const {
-  return R"json({"type":"object","required":["action"],"properties":{"action":{"type":"string","description":"navigate|click|type|fill|press|hover|scroll|screenshot|snapshot|evaluate"},"url":{"type":"string"},"selector":{"type":"string"},"text":{"type":"string"},"expression":{"type":"string"}}})json";
+  return R"json({"type":"object","required":["action"],"properties":{"action":{"type":"string","description":"navigate|click|type|fill|press|hover|scroll|screenshot|snapshot|evaluate|read"},"url":{"type":"string"},"selector":{"type":"string"},"ref":{"type":"string","description":"Element ref from snapshot (e.g. e0, e1)"},"text":{"type":"string"},"expression":{"type":"string"},"filter":{"type":"string","description":"Snapshot filter: interactive"},"depth":{"type":"number","description":"Max tree depth for snapshot"},"diff":{"type":"string","description":"Set to true for diff mode in snapshot"},"format":{"type":"string","description":"Snapshot format: text (default) or json"}}})json";
 }
 
 bool BrowserTool::domain_allowed(const std::string &url) const {
@@ -57,6 +57,12 @@ bool BrowserTool::connect(const std::string &host, int port) {
 
   cdp_client_ = std::move(client);
   browser_actions_ = std::make_unique<browser::BrowserActions>(*cdp_client_);
+
+  // Enable stealth mode if configured
+  if (browser_config_.stealth) {
+    (void)browser::StealthManager::enable(*cdp_client_);
+  }
+
   return true;
 }
 

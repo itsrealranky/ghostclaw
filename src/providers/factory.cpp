@@ -8,6 +8,7 @@
 #include "ghostclaw/providers/openai.hpp"
 #include "ghostclaw/providers/openrouter.hpp"
 #include "ghostclaw/providers/reliable.hpp"
+#include "ghostclaw/providers/synthetic.hpp"
 
 #include <cctype>
 #include <cstdlib>
@@ -218,6 +219,10 @@ create_provider(const std::string &name, const std::optional<std::string> &api_k
     return common::Result<std::shared_ptr<Provider>>::success(
         std::make_shared<OllamaProvider>(http_client));
   }
+  if (normalized == "synthetic") {
+    return common::Result<std::shared_ptr<Provider>>::success(
+        std::make_shared<SyntheticProvider>());
+  }
 
   static const std::unordered_map<std::string, CompatibleRoute> compatible_routes = {
       {"openai-codex", {"https://api.openai.com/v1", true}},
@@ -251,7 +256,6 @@ create_provider(const std::string &name, const std::optional<std::string> &api_k
   };
 
   static const std::unordered_map<std::string, AnthropicRoute> anthropic_routes = {
-      {"synthetic", {"https://api.synthetic.new/anthropic", false}},
       {"minimax", {"https://api.minimax.io/anthropic", false}},
       {"xiaomi", {"https://api.xiaomimimo.com/anthropic", true}},
       {"kimi-coding", {"https://api.moonshot.ai/anthropic", false}},

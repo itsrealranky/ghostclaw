@@ -6,6 +6,7 @@ namespace ghostclaw::email {
 
 std::unique_ptr<IEmailBackend> make_smtp_email_backend(const config::Config &config);
 std::unique_ptr<IEmailBackend> make_mailapp_email_backend(const config::Config &config);
+std::unique_ptr<IEmailBackend> make_gmail_email_backend(const config::Config &config);
 
 namespace {
 
@@ -35,6 +36,9 @@ std::unique_ptr<IEmailBackend> make_email_backend(const config::Config &config) 
   const std::string backend = common::to_lower(common::trim(config.email.backend));
   if (backend == "gog") {
     return std::make_unique<GogEmailBackend>();
+  }
+  if (backend == "gmail") {
+    return make_gmail_email_backend(config);
   }
   if (backend == "smtp") {
     return make_smtp_email_backend(config);

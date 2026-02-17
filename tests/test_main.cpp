@@ -21,6 +21,7 @@ void register_tts_voice_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_tunnel_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_observability_health_doctor_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_identity_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_migration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_config_integration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_agent_integration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_gateway_integration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
@@ -30,6 +31,9 @@ void register_security_integration_tests(std::vector<ghostclaw::tests::TestCase>
 void register_sessions_tools_nodes_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_full_integration_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_multi_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_daemon_schedules_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_mcp_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_google_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 
 int main() {
   // Ignore SIGPIPE to prevent crashes when output is piped
@@ -54,6 +58,7 @@ int main() {
   register_tunnel_tests(tests);
   register_observability_health_doctor_tests(tests);
   register_identity_tests(tests);
+  register_migration_tests(tests);
   register_config_integration_tests(tests);
   register_agent_integration_tests(tests);
   register_gateway_integration_tests(tests);
@@ -63,6 +68,9 @@ int main() {
   register_sessions_tools_nodes_tests(tests);
   register_full_integration_tests(tests);
   register_multi_tests(tests);
+  register_daemon_schedules_tests(tests);
+  register_mcp_tests(tests);
+  register_google_tests(tests);
 
   std::size_t passed = 0;
   std::size_t failed = 0;

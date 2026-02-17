@@ -299,6 +299,17 @@ void register_provider_tests(std::vector<ghostclaw::tests::TestCase> &tests) {
                      }
                    }});
 
+  tests.push_back({"factory_synthetic_provider_no_api_key_required", [] {
+                     auto mock = std::make_shared<MockHttpClient>();
+                     auto created = p::create_provider("synthetic", std::nullopt, mock);
+                     require(created.ok(), created.error());
+
+                     auto result = created.value()->chat("hello from test", "synthetic-model", 0.4);
+                     require(result.ok(), result.error());
+                     require(result.value().find("Synthetic response") != std::string::npos,
+                             "synthetic provider should return a mock response");
+                   }});
+
   tests.push_back({"factory_env_api_key_resolve_openai_codex", [] {
                      set_test_env("OPENAI_CODEX_API_KEY", "env-codex-key");
                      auto mock = std::make_shared<MockHttpClient>();

@@ -7,4 +7,5 @@
 #include "ghostclaw/providers/openai.hpp"
 #include "ghostclaw/providers/openrouter.hpp"
 #include "ghostclaw/providers/reliable.hpp"
+#include "ghostclaw/providers/synthetic.hpp"
 #include "ghostclaw/providers/traits.hpp"

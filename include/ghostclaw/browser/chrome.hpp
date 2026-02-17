@@ -15,6 +15,7 @@ struct ChromeLaunchOptions {
   bool disable_gpu = true;
   bool no_first_run = true;
   bool no_default_browser_check = true;
+  bool stealth = false;
 };
 
 [[nodiscard]] common::Result<std::vector<std::string>>

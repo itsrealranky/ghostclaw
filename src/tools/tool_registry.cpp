@@ -20,6 +20,9 @@
 #include "ghostclaw/tools/builtin/skills.hpp"
 #include "ghostclaw/tools/builtin/web_fetch.hpp"
 #include "ghostclaw/tools/builtin/web_search.hpp"
+#include "ghostclaw/mcp/manager.hpp"
+
+#include <iostream>
 
 namespace ghostclaw::tools {
 
@@ -111,6 +114,20 @@ ToolRegistry ToolRegistry::create_full(std::shared_ptr<security::SecurityPolicy>
   registry.register_tool(std::make_unique<SessionsSendTool>(session_store));
   registry.register_tool(std::make_unique<SessionsSpawnTool>(session_store));
   registry.register_tool(std::make_unique<SubagentsTool>(session_store));
+
+  // Register MCP tools from configured servers
+  if (!config.mcp.servers.empty()) {
+    auto mcp_manager = std::make_shared<mcp::McpManager>(config.mcp.servers);
+    auto mcp_status = mcp_manager->start_all();
+    if (!mcp_status.ok()) {
+      std::cerr << "[tools] MCP warning: " << mcp_status.error() << "\n";
+    }
+    auto mcp_tools = mcp_manager->collect_tools();
+    for (auto &tool : mcp_tools) {
+      registry.register_tool(std::move(tool));
+    }
+    // McpManager kept alive via shared_ptr in McpTool instances
+  }
 
   return registry;
 }

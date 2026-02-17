@@ -60,6 +60,7 @@ private:
   [[nodiscard]] BrowserHttpResponse handle_navigate(const BrowserHttpRequest &request);
   [[nodiscard]] BrowserHttpResponse handle_screenshot(const BrowserHttpRequest &request);
   [[nodiscard]] BrowserHttpResponse handle_snapshot(const BrowserHttpRequest &request);
+  [[nodiscard]] BrowserHttpResponse handle_read(const BrowserHttpRequest &request);
   [[nodiscard]] BrowserHttpResponse handle_act(const BrowserHttpRequest &request);
   [[nodiscard]] BrowserHttpResponse handle_tabs_list(const BrowserHttpRequest &request) const;
   [[nodiscard]] BrowserHttpResponse handle_tabs_open(const BrowserHttpRequest &request);

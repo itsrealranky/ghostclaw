@@ -26,12 +26,12 @@ trap cleanup EXIT
 
 log_pass() {
     echo -e "${GREEN}[PASS]${NC} $1"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
 }
 
 log_fail() {
     echo -e "${RED}[FAIL]${NC} $1: $2"
-    ((FAILED++))
+    FAILED=$((FAILED + 1))
 }
 
 log_info() {
@@ -110,13 +110,13 @@ else
 fi
 
 # ============================================
-# Test 7: Memory list (empty)
+# Test 7: Memory backend query
 # ============================================
-log_info "Test 7: Memory list"
-if timeout 5 $GHOSTCLAW memory list 2>&1; then
-    log_pass "Memory list works"
+log_info "Test 7: Memory backend query"
+if timeout 5 $GHOSTCLAW config get memory.backend 2>&1 | grep -q -E "sqlite|markdown|none"; then
+    log_pass "Memory backend query works"
 else
-    log_fail "Memory list" "Command failed"
+    log_fail "Memory backend query" "Command failed"
 fi
 
 # ============================================

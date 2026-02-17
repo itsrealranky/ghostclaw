@@ -1,10 +1,12 @@
 #pragma once
 
+#include "ghostclaw/browser/a11y.hpp"
 #include "ghostclaw/browser/cdp.hpp"
 #include "ghostclaw/common/result.hpp"
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ghostclaw::browser {
@@ -52,6 +54,7 @@ private:
   [[nodiscard]] common::Result<BrowserActionResult> action_snapshot(const BrowserAction &action);
   [[nodiscard]] common::Result<BrowserActionResult> action_pdf(const BrowserAction &action);
   [[nodiscard]] common::Result<BrowserActionResult> action_evaluate(const BrowserAction &action);
+  [[nodiscard]] common::Result<BrowserActionResult> action_read(const BrowserAction &action);
 
   [[nodiscard]] static std::string escape_js_string(const std::string &value);
   [[nodiscard]] static std::string param_or_empty(const BrowserAction &action,
@@ -60,6 +63,9 @@ private:
                                                                 const std::string &key);
 
   CDPClient &client_;
+  RefCache ref_cache_;
+  A11yParser a11y_parser_;
+  std::unordered_map<std::string, std::vector<A11yNode>> prev_snapshots_;
 };
 
 } // namespace ghostclaw::browser

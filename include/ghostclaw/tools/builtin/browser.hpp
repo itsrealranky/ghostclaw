@@ -2,6 +2,7 @@
 
 #include "ghostclaw/browser/actions.hpp"
 #include "ghostclaw/browser/cdp.hpp"
+#include "ghostclaw/browser/stealth.hpp"
 #include "ghostclaw/config/schema.hpp"
 #include "ghostclaw/tools/tool.hpp"
 

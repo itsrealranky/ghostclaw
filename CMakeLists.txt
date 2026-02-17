@@ -76,6 +76,7 @@ add_library(ghostclaw_lib
   src/config/schema.cpp
   src/config/config.cpp
   src/auth/oauth.cpp
+  src/auth/google_oauth.cpp
   src/security/action_tracker.cpp
   src/security/approval.cpp
   src/security/external_content.cpp
@@ -90,6 +91,7 @@ add_library(ghostclaw_lib
   src/providers/openai.cpp
   src/providers/openrouter.cpp
   src/providers/ollama.cpp
+  src/providers/synthetic.cpp
   src/providers/reliable.cpp
   src/providers/factory.cpp
   src/memory/memory.cpp
@@ -139,6 +141,11 @@ add_library(ghostclaw_lib
   src/agent/engine.cpp
   src/browser/cdp.cpp
   src/browser/actions.cpp
+  src/browser/a11y.cpp
+  src/browser/element.cpp
+  src/browser/stealth.cpp
+  src/browser/readability.cpp
+  src/browser/sessions.cpp
   src/browser/profiles.cpp
   src/browser/chrome.cpp
   src/browser/server.cpp
@@ -154,6 +161,9 @@ add_library(ghostclaw_lib
   src/sessions/session_key.cpp
   src/sessions/send_policy.cpp
   src/sessions/store.cpp
+  src/mcp/client.cpp
+  src/mcp/tool.cpp
+  src/mcp/manager.cpp
   src/nodes/node.cpp
   src/nodes/discovery.cpp
   src/channels/allowlist.cpp
@@ -171,7 +181,9 @@ add_library(ghostclaw_lib
   src/channels/channel_manager.cpp
   src/channels/send_service.cpp
   src/calendar/gog_backend.cpp
+  src/calendar/google_backend.cpp
   src/email/gog_backend.cpp
+  src/email/gmail_backend.cpp
   src/email/mailapp_backend.cpp
   src/email/smtp_backend.cpp
   src/onboard/wizard.cpp
@@ -194,6 +206,7 @@ add_library(ghostclaw_lib
   src/tts/system.cpp
   src/voice/wake.cpp
   src/integrations/registry.cpp
+  src/migration/module.cpp
   src/observability/log_observer.cpp
   src/observability/multi_observer.cpp
   src/observability/factory.cpp
@@ -289,6 +302,7 @@ add_executable(ghostclaw_tests
   tests/test_tunnel.cpp
   tests/test_observability_health_doctor.cpp
   tests/test_identity.cpp
+  tests/test_migration.cpp
   tests/test_sessions_tools_nodes.cpp
   tests/integration/test_config_integration.cpp
   tests/integration/test_agent_integration.cpp
@@ -298,6 +312,9 @@ add_executable(ghostclaw_tests
   tests/integration/test_security_integration.cpp
   tests/integration/test_full_integration.cpp
   tests/test_multi.cpp
+  tests/test_daemon_schedules.cpp
+  tests/test_mcp.cpp
+  tests/test_google.cpp
 )
 target_link_libraries(ghostclaw_tests PRIVATE ghostclaw_lib)
 target_include_directories(ghostclaw_tests PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/tests)

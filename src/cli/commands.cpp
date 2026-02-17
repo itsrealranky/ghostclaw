@@ -1,5 +1,6 @@
 #include "ghostclaw/cli/commands.hpp"
 
+#include "ghostclaw/auth/google_oauth.hpp"
 #include "ghostclaw/auth/oauth.hpp"
 #include "ghostclaw/multi/agent_pool.hpp"
 #include "ghostclaw/multi/orchestrator.hpp"
@@ -12,6 +13,7 @@
 #include "ghostclaw/heartbeat/cron.hpp"
 #include "ghostclaw/heartbeat/cron_store.hpp"
 #include "ghostclaw/integrations/registry.hpp"
+#include "ghostclaw/migration/module.hpp"
 #include "ghostclaw/onboard/wizard.hpp"
 #include "ghostclaw/runtime/app.hpp"
 #include "ghostclaw/skills/import_openclaw.hpp"
@@ -21,6 +23,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -29,6 +32,16 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#if defined(_WIN32)
+#include <io.h>
+#define GHOSTCLAW_ISATTY _isatty
+#define GHOSTCLAW_FILENO _fileno
+#else
+#include <unistd.h>
+#define GHOSTCLAW_ISATTY isatty
+#define GHOSTCLAW_FILENO fileno
+#endif
 
 namespace ghostclaw::cli {
 
@@ -126,6 +139,8 @@ std::string read_stdin_all() {
   return out.str();
 }
 
+bool stdin_is_tty() { return GHOSTCLAW_ISATTY(GHOSTCLAW_FILENO(stdin)) != 0; }
+
 int run_agent(std::vector<std::string> args);
 
 int run_onboard(std::vector<std::string> args) {
@@ -152,7 +167,13 @@ int run_onboard(std::vector<std::string> args) {
   // - Explicit --interactive or --non-interactive wins
   // - If both provider and model are supplied via flags, assume non-interactive
   // - Otherwise default to interactive
-  if (explicit_non_interactive) {
+  if (explicit_interactive && !stdin_is_tty()) {
+    std::cerr << "--interactive requires a TTY\n";
+    return 1;
+  }
+  if (!explicit_non_interactive && !explicit_interactive && !stdin_is_tty()) {
+    options.interactive = false;
+  } else if (explicit_non_interactive) {
     options.interactive = false;
   } else if (explicit_interactive) {
     options.interactive = true;
@@ -176,6 +197,12 @@ int run_onboard(std::vector<std::string> args) {
 
 int run_agent(std::vector<std::string> args) {
   if (!config::config_exists()) {
+    if (!stdin_is_tty()) {
+      std::cerr << "No configuration found and stdin is not interactive.\n";
+      std::cerr << "Run 'ghostclaw onboard --non-interactive --provider <name> --model <name>' "
+                   "first.\n";
+      return 1;
+    }
     std::cout << "No configuration found. Let's set up GhostClaw first.\n";
     onboard::WizardOptions wizard_opts;
     wizard_opts.interactive = true;
@@ -190,6 +217,7 @@ int run_agent(std::vector<std::string> args) {
     std::cerr << context.error() << "\n";
     return 1;
   }
+  auto runtime_context = std::move(context.value());
 
   std::string message;
   std::string provider;
@@ -203,20 +231,23 @@ int run_agent(std::vector<std::string> args) {
   agent::AgentOptions options;
   if (!provider.empty()) {
     options.provider_override = provider;
+    runtime_context.mutable_config().default_provider = provider;
   }
   if (!model.empty()) {
     options.model_override = model;
+    runtime_context.mutable_config().default_model = model;
   }
   if (!temperature_raw.empty()) {
     try {
       options.temperature_override = std::stod(temperature_raw);
+      runtime_context.mutable_config().default_temperature = *options.temperature_override;
     } catch (...) {
       std::cerr << "invalid temperature: " << temperature_raw << "\n";
       return 1;
     }
   }
 
-  auto engine = context.value().create_agent_engine();
+  auto engine = runtime_context.create_agent_engine();
   if (!engine.ok()) {
     std::cerr << engine.error() << "\n";
     return 1;
@@ -242,6 +273,12 @@ int run_agent(std::vector<std::string> args) {
 
 int run_gateway(std::vector<std::string> args) {
   if (!config::config_exists()) {
+    if (!stdin_is_tty()) {
+      std::cerr << "No configuration found and stdin is not interactive.\n";
+      std::cerr << "Run 'ghostclaw onboard --non-interactive --provider <name> --model <name>' "
+                   "first.\n";
+      return 1;
+    }
     std::cout << "No configuration found. Let's set up GhostClaw first.\n";
     onboard::WizardOptions wizard_opts;
     wizard_opts.interactive = true;
@@ -367,6 +404,12 @@ int run_doctor() {
 
 int run_daemon(std::vector<std::string> args) {
   if (!config::config_exists()) {
+    if (!stdin_is_tty()) {
+      std::cerr << "No configuration found and stdin is not interactive.\n";
+      std::cerr << "Run 'ghostclaw onboard --non-interactive --provider <name> --model <name>' "
+                   "first.\n";
+      return 1;
+    }
     std::cout << "No configuration found. Let's set up GhostClaw first.\n";
     onboard::WizardOptions wizard_opts;
     wizard_opts.interactive = true;
@@ -1102,6 +1145,105 @@ int run_config(std::vector<std::string> args) {
   return 1;
 }
 
+int run_migrate(std::vector<std::string> args) {
+  auto print_usage = []() {
+    std::cout << "usage: ghostclaw migrate [legacy] [--settings PATH] [--merge] [--dry-run]\n";
+  };
+
+  if (!args.empty() &&
+      (args[0] == "help" || args[0] == "--help" || args[0] == "-h")) {
+    print_usage();
+    return 0;
+  }
+
+  if (!args.empty() && !common::starts_with(args[0], "-")) {
+    const std::string source = common::to_lower(common::trim(args[0]));
+    const std::string compatibility_source = std::string("tiny") + "claw";
+    if (source != "legacy" && source != compatibility_source) {
+      std::cerr << "unknown migration source: " << args[0] << "\n";
+      print_usage();
+      return 1;
+    }
+    args.erase(args.begin());
+  }
+
+  std::string settings_path;
+  bool merge_with_existing = false;
+  bool dry_run = false;
+  for (std::size_t i = 0; i < args.size();) {
+    if (args[i] == "--merge") {
+      merge_with_existing = true;
+      args.erase(args.begin() + static_cast<long>(i));
+      continue;
+    }
+    if (args[i] == "--dry-run") {
+      dry_run = true;
+      args.erase(args.begin() + static_cast<long>(i));
+      continue;
+    }
+    if (args[i] == "--settings" || args[i] == "-s") {
+      if (i + 1 >= args.size()) {
+        std::cerr << "missing value for " << args[i] << "\n";
+        return 1;
+      }
+      settings_path = args[i + 1];
+      args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i + 2));
+      continue;
+    }
+    if (common::starts_with(args[i], "--settings=")) {
+      settings_path = args[i].substr(std::string("--settings=").size());
+      if (settings_path.empty()) {
+        std::cerr << "missing value for --settings\n";
+        return 1;
+      }
+      args.erase(args.begin() + static_cast<long>(i));
+      continue;
+    }
+    ++i;
+  }
+
+  if (!args.empty()) {
+    std::cerr << "unknown migrate arguments: " << join_tokens(args) << "\n";
+    print_usage();
+    return 1;
+  }
+
+  migration::LegacyImportOptions options;
+  if (!common::trim(settings_path).empty()) {
+    options.settings_path = std::filesystem::path(settings_path);
+  }
+  options.merge_with_existing = merge_with_existing;
+  options.write_config = !dry_run;
+
+  auto imported = migration::import_legacy_settings(options);
+  if (!imported.ok()) {
+    std::cerr << imported.error() << "\n";
+    return 1;
+  }
+
+  const auto &result = imported.value();
+  std::cout << "Imported " << result.imported_agents << " agent(s), " << result.imported_teams
+            << " team(s)\n";
+  if (result.created_default_agent) {
+    std::cout << "No agents were found in source settings; created fallback 'default' agent.\n";
+  }
+  if (dry_run) {
+    std::cout << "Dry run complete: config was not written.\n";
+  } else {
+    auto path = config::config_path();
+    if (path.ok()) {
+      std::cout << "Config updated: " << path.value().string() << "\n";
+    }
+  }
+  if (!result.warnings.empty()) {
+    std::cout << "Warnings:\n";
+    for (const auto &warning : result.warnings) {
+      std::cout << "- " << warning << "\n";
+    }
+  }
+  return 0;
+}
+
 int run_multi(std::vector<std::string> args) {
   if (!config::config_exists()) {
     std::cerr << "No configuration found. Run 'ghostclaw onboard' first.\n";
@@ -1137,7 +1279,7 @@ int run_multi(std::vector<std::string> args) {
 
   const bool daemon_mode = take_flag(args, "--daemon");
   if (daemon_mode) {
-    orchestrator.start([](const std::string &agent_id, const std::string &text) {
+    orchestrator.start([](const std::string &agent_id, const std::string &text, bool) {
       std::cout << "[" << agent_id << "] " << text << "\n";
     });
     std::cout << "Multi-agent daemon started. Press Enter to stop...\n";
@@ -1180,6 +1322,66 @@ int run_login(std::vector<std::string> args) {
   return 0;
 }
 
+int run_google(std::vector<std::string> args) {
+  if (args.empty()) {
+    std::cerr << "usage: ghostclaw google <subcommand>\n";
+    std::cerr << "  login    Authorize GhostClaw with your Google account\n";
+    std::cerr << "  logout   Remove Google OAuth tokens\n";
+    std::cerr << "  status   Check Google auth status\n";
+    return 1;
+  }
+
+  const std::string subcommand = args[0];
+  args.erase(args.begin());
+
+  if (subcommand == "logout") {
+    auto status = auth::delete_google_tokens();
+    if (!status.ok()) {
+      std::cerr << status.error() << "\n";
+      return 1;
+    }
+    std::cout << "Google tokens removed.\n";
+    return 0;
+  }
+
+  if (subcommand == "status") {
+    if (auth::has_valid_google_tokens()) {
+      std::cout << "Google: authorized (tokens present)\n";
+    } else {
+      std::cout << "Google: not authorized\n";
+    }
+    return 0;
+  }
+
+  if (subcommand == "login") {
+    auto cfg = config::load_config();
+    if (!cfg.ok()) {
+      std::cerr << cfg.error() << "\n";
+      return 1;
+    }
+
+    if (cfg.value().google.client_id.empty()) {
+      std::cerr << "google.client_id is not set in config.toml\n";
+      std::cerr << "Add the following to your config:\n\n";
+      std::cerr << "  [google]\n";
+      std::cerr << "  client_id = \"your-client-id.apps.googleusercontent.com\"\n";
+      std::cerr << "  client_secret = \"your-client-secret\"\n";
+      return 1;
+    }
+
+    auto http = std::make_shared<providers::CurlHttpClient>();
+    auto status = auth::run_google_login(*http, cfg.value().google);
+    if (!status.ok()) {
+      std::cerr << "Google login failed: " << status.error() << "\n";
+      return 1;
+    }
+    return 0;
+  }
+
+  std::cerr << "unknown google subcommand: " << subcommand << "\n";
+  return 1;
+}
+
 } // namespace
 
 void print_help() {
@@ -1201,12 +1403,14 @@ void print_help() {
   std::cout << BOLD << "  GETTING STARTED" << RESET << "\n";
   std::cout << "  " << GREEN << "onboard" << RESET << DIM << "        Interactive setup wizard" << RESET << "\n";
   std::cout << "  " << GREEN << "login" << RESET << DIM << "          Login with ChatGPT (no API key needed)" << RESET << "\n";
-  std::cout << "  " << GREEN << "agent" << RESET << DIM << "          Start interactive AI agent (Claude Code-style)" << RESET << "\n";
+  std::cout << "  " << GREEN << "google login" << RESET << DIM << "   Authorize GhostClaw with your Google account" << RESET << "\n";
+  std::cout << "  " << GREEN << "agent" << RESET << DIM << "          Start interactive AI agent session" << RESET << "\n";
   std::cout << "  " << GREEN << "agent -m" << RESET << " MSG" << DIM << "  Run a single message and exit" << RESET << "\n\n";
 
   std::cout << BOLD << "  SERVICES" << RESET << "\n";
   std::cout << "  " << GREEN << "gateway" << RESET << DIM << "        Start HTTP/WebSocket API server" << RESET << "\n";
   std::cout << "  " << GREEN << "daemon" << RESET << DIM << "         Run as background daemon with channels" << RESET << "\n";
+  std::cout << "  " << GREEN << "migrate" << RESET << DIM << "        Import legacy settings into GhostClaw" << RESET << "\n";
   std::cout << "  " << GREEN << "multi" << RESET << DIM << "          Multi-agent team collaboration mode" << RESET << "\n";
   std::cout << "  " << GREEN << "channel" << RESET << DIM << "        Manage messaging channels (Telegram, Slack, etc)" << RESET << "\n\n";
 
@@ -1243,6 +1447,12 @@ void print_help() {
 int run_cli(int argc, char **argv) {
   if (argc <= 1) {
     if (!config::config_exists()) {
+      if (!stdin_is_tty()) {
+        std::cerr << "No configuration found and stdin is not interactive.\n";
+        std::cerr << "Run 'ghostclaw onboard --non-interactive --provider <name> --model <name>' "
+                     "to bootstrap.\n";
+        return 1;
+      }
       // First run: auto-launch the onboarding wizard
       onboard::WizardOptions wizard_opts;
       wizard_opts.interactive = true;
@@ -1270,6 +1480,12 @@ int run_cli(int argc, char **argv) {
 
   if (args.empty()) {
     if (!config::config_exists()) {
+      if (!stdin_is_tty()) {
+        std::cerr << "No configuration found and stdin is not interactive.\n";
+        std::cerr << "Run 'ghostclaw onboard --non-interactive --provider <name> --model <name>' "
+                     "to bootstrap.\n";
+        return 1;
+      }
       onboard::WizardOptions wizard_opts;
       wizard_opts.interactive = true;
       wizard_opts.offer_launch = true;
@@ -1355,7 +1571,13 @@ int run_cli(int argc, char **argv) {
   if (subcommand == "message") {
     return run_message(std::move(args));
   }
-  if (subcommand == "service" || subcommand == "migrate") {
+  if (subcommand == "google") {
+    return run_google(std::move(args));
+  }
+  if (subcommand == "migrate") {
+    return run_migrate(std::move(args));
+  }
+  if (subcommand == "service") {
     std::cout << subcommand << " command is available but not yet fully implemented.\n";
     return 0;
   }

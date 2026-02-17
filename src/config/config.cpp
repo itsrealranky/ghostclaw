@@ -334,6 +334,77 @@ bool provider_is_known(const std::string &provider) {
   return false;
 }
 
+void load_daemon_config(Config &config, const common::TomlDocument &doc) {
+  config.daemon.auto_start_schedules =
+      doc.get_bool("daemon.auto_start_schedules", config.daemon.auto_start_schedules);
+
+  std::set<std::string> schedule_ids;
+  for (const auto &[key, val] : doc.values) {
+    if (common::starts_with(key, "daemon.schedules.")) {
+      const auto after = key.substr(17); // skip "daemon.schedules."
+      const auto dot = after.find('.');
+      if (dot != std::string::npos) {
+        schedule_ids.insert(after.substr(0, dot));
+      }
+    }
+  }
+
+  for (const auto &id : schedule_ids) {
+    ScheduleEntry entry;
+    entry.id = id;
+    const std::string prefix = "daemon.schedules." + id + ".";
+    entry.expression = doc.get_string(prefix + "expression");
+    entry.command = doc.get_string(prefix + "command");
+    entry.enabled = doc.get_bool(prefix + "enabled", entry.enabled);
+    config.daemon.schedules.push_back(std::move(entry));
+  }
+}
+
+void load_mcp_config(Config &config, const common::TomlDocument &doc) {
+  std::set<std::string> server_ids;
+  for (const auto &[key, val] : doc.values) {
+    if (common::starts_with(key, "mcp.servers.")) {
+      const auto after = key.substr(12); // skip "mcp.servers."
+      const auto dot = after.find('.');
+      if (dot != std::string::npos) {
+        server_ids.insert(after.substr(0, dot));
+      }
+    }
+  }
+
+  for (const auto &id : server_ids) {
+    McpServerConfig server;
+    server.id = id;
+    const std::string prefix = "mcp.servers." + id + ".";
+    server.command = doc.get_string(prefix + "command");
+    server.args = doc.get_string_array(prefix + "args");
+    server.enabled = doc.get_bool(prefix + "enabled", server.enabled);
+
+    // Scan for env.* subkeys
+    const std::string env_prefix = prefix + "env.";
+    for (const auto &[key, val] : doc.values) {
+      if (common::starts_with(key, env_prefix)) {
+        const auto env_key = key.substr(env_prefix.size());
+        server.env[env_key] = doc.get_string(key);
+      }
+    }
+
+    config.mcp.servers.push_back(std::move(server));
+  }
+}
+
+void load_google_config(Config &config, const common::TomlDocument &doc) {
+  config.google.client_id =
+      expand_config_value(doc.get_string("google.client_id", config.google.client_id));
+  config.google.client_secret =
+      expand_config_value(doc.get_string("google.client_secret", config.google.client_secret));
+  if (doc.has("google.scopes")) {
+    config.google.scopes = doc.get_string_array("google.scopes", config.google.scopes);
+  }
+  config.google.redirect_port =
+      static_cast<std::uint16_t>(doc.get_u64("google.redirect_port", config.google.redirect_port));
+}
+
 void load_multi_config(Config &config, const common::TomlDocument &doc) {
   config.multi.default_agent = doc.get_string("multi.default_agent", config.multi.default_agent);
   config.multi.max_internal_messages = static_cast<std::size_t>(
@@ -645,6 +716,9 @@ common::Result<Config> load_config() {
   load_channel_config(config, doc);
   load_tunnel_config(config, doc);
   load_multi_config(config, doc);
+  load_daemon_config(config, doc);
+  load_mcp_config(config, doc);
+  load_google_config(config, doc);
 
   config.observability.backend = doc.get_string("observability.backend", config.observability.backend);
   config.runtime.kind = doc.get_string("runtime.kind", config.runtime.kind);
@@ -959,6 +1033,42 @@ common::Status save_config(const Config &config) {
     }
   }
 
+  // Daemon schedules
+  if (!config.daemon.schedules.empty() || !config.daemon.auto_start_schedules) {
+    file << "\n[daemon]\n";
+    file << "auto_start_schedules = " << bool_to_toml(config.daemon.auto_start_schedules) << "\n";
+    for (const auto &entry : config.daemon.schedules) {
+      file << "\n[daemon.schedules." << entry.id << "]\n";
+      file << "expression = " << common::quote_toml_string(entry.expression) << "\n";
+      file << "command = " << common::quote_toml_string(entry.command) << "\n";
+      file << "enabled = " << bool_to_toml(entry.enabled) << "\n";
+    }
+  }
+
+  // MCP servers
+  if (!config.mcp.servers.empty()) {
+    for (const auto &server : config.mcp.servers) {
+      file << "\n[mcp.servers." << server.id << "]\n";
+      file << "command = " << common::quote_toml_string(server.command) << "\n";
+      file << "args = " << string_array_to_toml(server.args) << "\n";
+      file << "enabled = " << bool_to_toml(server.enabled) << "\n";
+      if (!server.env.empty()) {
+        for (const auto &[key, val] : server.env) {
+          file << "env." << key << " = " << common::quote_toml_string(val) << "\n";
+        }
+      }
+    }
+  }
+
+  // Google config
+  if (!config.google.client_id.empty()) {
+    file << "\n[google]\n";
+    file << "client_id = " << common::quote_toml_string(config.google.client_id) << "\n";
+    file << "client_secret = " << common::quote_toml_string(config.google.client_secret) << "\n";
+    file << "scopes = " << string_array_to_toml(config.google.scopes) << "\n";
+    file << "redirect_port = " << config.google.redirect_port << "\n";
+  }
+
   file.close();
   if (!file) {
     return common::Status::error("Failed writing temporary config file");
@@ -1133,10 +1243,43 @@ common::Result<std::vector<std::string>> validate_config(const Config &config) {
   // Multi-agent validation
   std::set<std::string> known_agent_ids;
   for (const auto &agent : config.multi.agents) {
+    if (agent.id.empty()) {
+      return common::Result<std::vector<std::string>>::failure(
+          "agent config has empty id");
+    }
+    if (known_agent_ids.find(agent.id) != known_agent_ids.end()) {
+      return common::Result<std::vector<std::string>>::failure(
+          "duplicate agent id: '" + agent.id + "'");
+    }
     known_agent_ids.insert(agent.id);
+
+    if (agent.temperature < 0.0 || agent.temperature > 2.0) {
+      return common::Result<std::vector<std::string>>::failure(
+          "agent '" + agent.id + "' temperature must be between 0.0 and 2.0");
+    }
   }
 
+  if (config.multi.max_internal_messages == 0 && !config.multi.agents.empty()) {
+    return common::Result<std::vector<std::string>>::failure(
+        "multi.max_internal_messages must be > 0");
+  }
+
+  std::set<std::string> known_team_ids;
   for (const auto &team : config.multi.teams) {
+    if (team.id.empty()) {
+      return common::Result<std::vector<std::string>>::failure(
+          "team config has empty id");
+    }
+    if (known_team_ids.find(team.id) != known_team_ids.end()) {
+      return common::Result<std::vector<std::string>>::failure(
+          "duplicate team id: '" + team.id + "'");
+    }
+    known_team_ids.insert(team.id);
+
+    if (team.agents.empty()) {
+      return common::Result<std::vector<std::string>>::failure(
+          "team '" + team.id + "' has no agents");
+    }
     for (const auto &member : team.agents) {
       if (known_agent_ids.find(member) == known_agent_ids.end()) {
         return common::Result<std::vector<std::string>>::failure(
@@ -1156,7 +1299,43 @@ common::Result<std::vector<std::string>> validate_config(const Config &config) {
             "team '" + team.id + "' leader_agent '" + team.leader_agent +
             "' is not in the team's agent list");
       }
+    } else if (!team.agents.empty()) {
+      warnings.push_back("team '" + team.id + "' has no leader_agent set, "
+                          "first agent will be used as leader");
     }
+  }
+
+  // Warn if agent/team IDs collide (ambiguous routing)
+  for (const auto &agent_id : known_agent_ids) {
+    if (known_team_ids.find(agent_id) != known_team_ids.end()) {
+      warnings.push_back("agent '" + agent_id +
+                          "' and team '" + agent_id + "' share the same id, "
+                          "team will take routing priority");
+    }
+  }
+
+  // Daemon schedule validation
+  for (const auto &entry : config.daemon.schedules) {
+    if (entry.expression.empty()) {
+      warnings.push_back("daemon schedule '" + entry.id + "' has empty expression");
+    }
+    if (entry.command.empty()) {
+      warnings.push_back("daemon schedule '" + entry.id + "' has empty command");
+    }
+  }
+
+  // MCP server validation
+  for (const auto &server : config.mcp.servers) {
+    if (server.enabled && server.command.empty()) {
+      warnings.push_back("mcp server '" + server.id + "' has empty command");
+    }
+  }
+
+  // Google config validation
+  const std::string email_backend = common::to_lower(common::trim(config.email.backend));
+  const std::string cal_backend = common::to_lower(common::trim(config.calendar.backend));
+  if ((email_backend == "gmail" || cal_backend == "google") && config.google.client_id.empty()) {
+    warnings.push_back("google.client_id is required when email.backend='gmail' or calendar.backend='google'");
   }
 
   if (!config.multi.default_agent.empty() && !config.multi.agents.empty()) {
