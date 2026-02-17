@@ -486,7 +486,11 @@ void WebSocketServer::accept_loop() {
       }
       clients_[client_fd] = client;
     }
-    std::thread([this, client]() { client_loop(client); }).detach();
+    try {
+      std::thread([this, client]() { client_loop(client); }).detach();
+    } catch (const std::system_error &) {
+      // Thread creation or detach may fail during shutdown; safe to ignore.
+    }
   }
 #endif
 }

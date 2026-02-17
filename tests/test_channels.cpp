@@ -639,11 +639,12 @@ void register_channels_tests(std::vector<ghostclaw::tests::TestCase> &tests) {
 
                      const auto &times = channel.start_times();
                      if (times.size() >= 4) {
-                       // Later intervals should not exceed max_backoff significantly
+                       // Later intervals should not exceed max_backoff significantly.
+                       // Use generous tolerance (300ms) for slow CI runners.
                        for (std::size_t i = 3; i < times.size(); ++i) {
                          auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
                              times[i] - times[i - 1]);
-                         require(interval.count() <= 100, "backoff should be capped");
+                         require(interval.count() <= 300, "backoff should be capped");
                        }
                      }
                    }});

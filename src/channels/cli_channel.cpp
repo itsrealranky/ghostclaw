@@ -49,7 +49,11 @@ common::Status CliChannel::start() {
 void CliChannel::stop() {
   running_ = false;
   if (input_thread_.joinable()) {
-    input_thread_.detach();
+    try {
+      input_thread_.detach();
+    } catch (const std::system_error &) {
+      // Thread may have already finished; safe to ignore.
+    }
   }
 }
 
