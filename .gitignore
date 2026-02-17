@@ -36,6 +36,9 @@ telegram-log.txt
 # Build artifacts
 compile_commands.json
 
+# Nix
+/result
+
 # Test files (keep in repo but ignore local test configs)
 test-config.toml
 

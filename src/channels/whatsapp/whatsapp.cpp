@@ -4,6 +4,7 @@
 #include "ghostclaw/common/fs.hpp"
 #include "ghostclaw/common/json_util.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 namespace ghostclaw::channels::whatsapp {
