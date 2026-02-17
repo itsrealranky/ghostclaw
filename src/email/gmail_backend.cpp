@@ -21,15 +21,17 @@ std::string base64url_encode_rfc2822(const std::string &data) {
 
   for (std::size_t i = 0; i < data.size(); i += 3) {
     const auto b0 = static_cast<unsigned char>(data[i]);
-    const auto b1 = i + 1 < data.size() ? static_cast<unsigned char>(data[i + 1]) : 0u;
-    const auto b2 = i + 2 < data.size() ? static_cast<unsigned char>(data[i + 2]) : 0u;
+    const bool has_b1 = i + 1 < data.size();
+    const bool has_b2 = i + 2 < data.size();
+    const auto b1 = has_b1 ? static_cast<unsigned char>(data[i + 1]) : 0u;
+    const auto b2 = has_b2 ? static_cast<unsigned char>(data[i + 2]) : 0u;
     const unsigned int n = (static_cast<unsigned int>(b0) << 16) |
                             (static_cast<unsigned int>(b1) << 8) |
                             static_cast<unsigned int>(b2);
     result.push_back(table[(n >> 18) & 0x3F]);
     result.push_back(table[(n >> 12) & 0x3F]);
-    if (i + 1 < data.size()) result.push_back(table[(n >> 6) & 0x3F]);
-    if (i + 2 < data.size()) result.push_back(table[n & 0x3F]);
+    if (has_b1) result.push_back(table[(n >> 6) & 0x3F]);
+    if (has_b2) result.push_back(table[n & 0x3F]);
   }
 
   for (auto &ch : result) {

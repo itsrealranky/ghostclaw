@@ -14,7 +14,7 @@ bool is_token_boundary(char ch) {
   return !std::isalnum(static_cast<unsigned char>(ch));
 }
 
-std::string trim_leading_separators(std::string value) {
+std::string trim_leading_separators(const std::string &value) {
   std::size_t pos = 0;
   while (pos < value.size()) {
     const char ch = value[pos];

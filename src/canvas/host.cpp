@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <mutex>
 #include <sstream>
 #include <string_view>
 #include <utility>

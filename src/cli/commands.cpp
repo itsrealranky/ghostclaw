@@ -546,7 +546,7 @@ int run_cron(std::vector<std::string> args) {
   return 1;
 }
 
-int run_channel(std::vector<std::string> args) {
+int run_channel(const std::vector<std::string> &args) {
   auto cfg = config::load_config();
   if (!cfg.ok()) {
     std::cerr << cfg.error() << "\n";
@@ -1083,7 +1083,7 @@ int run_integrations(std::vector<std::string> args) {
   return 1;
 }
 
-int run_config(std::vector<std::string> args) {
+int run_config(const std::vector<std::string> &args) {
   if (args.empty() || args[0] == "show") {
     return run_status();
   }

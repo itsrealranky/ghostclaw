@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ghostclaw/common/result.hpp"
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>

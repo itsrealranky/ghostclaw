@@ -804,7 +804,7 @@ common::Status AgentEngine::run_interactive(const AgentOptions &options) {
       first_line = false;
 
       // Detect code block boundaries
-      if (content_line.find("```") == 0) {
+      if (content_line.starts_with("```")) {
         if (!in_code_block) {
           in_code_block = true;
           std::cout << BG_DARK << DIM << content_line << RESET << "\n";
@@ -819,7 +819,7 @@ common::Status AgentEngine::run_interactive(const AgentOptions &options) {
         std::cout << BG_DARK << CYAN << content_line << RESET << "\n";
       } else {
         // Bold headers
-        if (content_line.find("## ") == 0 || content_line.find("# ") == 0) {
+        if (content_line.starts_with("## ") || content_line.starts_with("# ")) {
           std::cout << BOLD << content_line << RESET << "\n";
         } else if (content_line.find("**") != std::string::npos) {
           std::cout << content_line << "\n";

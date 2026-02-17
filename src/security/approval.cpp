@@ -291,11 +291,9 @@ common::Result<ApprovalDecision> ApprovalSocketClient::request(const ApprovalReq
     const int timeout_ms =
         std::max(1, static_cast<int>(std::min<std::chrono::milliseconds>(remaining, std::chrono::milliseconds(250)).count()));
 
-    struct pollfd pfd {
-      .fd = fd,
-      .events = POLLIN,
-      .revents = 0,
-    };
+    struct pollfd pfd{};
+    pfd.fd = fd;
+    pfd.events = POLLIN;
 
     const int ready = poll(&pfd, 1, timeout_ms);
     if (ready <= 0) {

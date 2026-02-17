@@ -5,6 +5,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <vector>
