@@ -9,10 +9,20 @@
 #include <cmath>
 #include <cstdlib>
 #include <cctype>
+#include <string_view>
 #include <regex>
 #include <set>
 #include <sstream>
+#include <mutex>
+#include <utility>
 #include <vector>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace ghostclaw::config {
 
@@ -21,6 +31,98 @@ namespace {
 constexpr const char *CONFIG_FOLDER = ".ghostclaw";
 constexpr const char *CONFIG_FILENAME = "config.toml";
 std::optional<std::filesystem::path> g_config_path_override;
+std::string g_loaded_dotenv_cache_key;
+std::mutex g_dotenv_mutex;
+
+struct MappedConfigFile {
+  MappedConfigFile() = default;
+  MappedConfigFile(const MappedConfigFile &) = delete;
+  MappedConfigFile &operator=(const MappedConfigFile &) = delete;
+
+  MappedConfigFile(MappedConfigFile &&other) noexcept { *this = std::move(other); }
+  MappedConfigFile &operator=(MappedConfigFile &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    release();
+#ifndef _WIN32
+    data = other.data;
+    size = other.size;
+    fd = other.fd;
+    mmap_used = other.mmap_used;
+    other.data = nullptr;
+    other.size = 0;
+    other.fd = -1;
+    other.mmap_used = false;
+#else
+    size = other.size;
+#endif
+    owned = std::move(other.owned);
+    if (!owned.empty()) {
+      data = owned.data();
+      size = owned.size();
+    }
+    return *this;
+  }
+
+  ~MappedConfigFile() { release(); }
+
+  [[nodiscard]] std::string_view view() const {
+    if (data == nullptr || size == 0) {
+      return {};
+    }
+    return std::string_view(data, size);
+  }
+
+  void set_owned(std::string text) {
+    release();
+    owned = std::move(text);
+    data = owned.data();
+    size = owned.size();
+  }
+
+  void set_mapped(const char *mapped_data, const std::size_t mapped_size,
+#ifndef _WIN32
+                  const int mapped_fd,
+#endif
+                  const bool mapped) {
+    release();
+    data = mapped_data;
+    size = mapped_size;
+#ifndef _WIN32
+    fd = mapped_fd;
+    mmap_used = mapped;
+#else
+    (void)mapped;
+#endif
+  }
+
+private:
+  void release() {
+#ifndef _WIN32
+    if (mmap_used && data != nullptr && size > 0) {
+      (void)munmap(const_cast<char *>(data), size);
+    }
+    if (fd >= 0) {
+      (void)close(fd);
+    }
+    fd = -1;
+    mmap_used = false;
+#endif
+    data = nullptr;
+    size = 0;
+    owned.clear();
+  }
+
+public:
+  const char *data = nullptr;
+  std::size_t size = 0;
+  std::string owned;
+#ifndef _WIN32
+  int fd = -1;
+  bool mmap_used = false;
+#endif
+};
 
 std::optional<std::filesystem::path> resolved_config_path_override() {
   if (g_config_path_override.has_value()) {
@@ -30,6 +132,64 @@ std::optional<std::filesystem::path> resolved_config_path_override() {
     return std::filesystem::path(common::expand_path(env));
   }
   return std::nullopt;
+}
+
+common::Result<MappedConfigFile> read_config_file(const std::filesystem::path &path) {
+#ifndef _WIN32
+  const int fd = open(path.c_str(), O_RDONLY);
+  if (fd >= 0) {
+    struct stat stats {};
+    if (fstat(fd, &stats) == 0 && stats.st_size >= 0) {
+      const auto mapped_size = static_cast<std::size_t>(stats.st_size);
+      if (mapped_size == 0) {
+        MappedConfigFile empty;
+        empty.set_owned({});
+        return common::Result<MappedConfigFile>::success(std::move(empty));
+      }
+
+      void *mapped = mmap(nullptr, mapped_size, PROT_READ, MAP_PRIVATE, fd, 0);
+      if (mapped != MAP_FAILED) {
+        MappedConfigFile file;
+        file.set_mapped(static_cast<const char *>(mapped), mapped_size, fd, true);
+        return common::Result<MappedConfigFile>::success(std::move(file));
+      }
+    }
+    (void)close(fd);
+  }
+#endif
+
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return common::Result<MappedConfigFile>::failure("Unable to open config file: " + path.string());
+  }
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+
+  MappedConfigFile out;
+  out.set_owned(buffer.str());
+  return common::Result<MappedConfigFile>::success(std::move(out));
+}
+
+std::string dotenv_cache_key() {
+  std::ostringstream key;
+  if (const char *env_file = std::getenv("GHOSTCLAW_ENV_FILE");
+      env_file != nullptr && *env_file != '\0') {
+    key << "env_file=" << common::expand_path(env_file);
+  }
+  key << "|home=";
+  if (const auto home = common::home_dir(); home.ok()) {
+    key << home.value().string();
+  }
+  if (const auto override_path = resolved_config_path_override(); override_path.has_value()) {
+    key << "|config_override=" << override_path->string();
+  }
+  key << "|cwd=";
+  std::error_code ec;
+  const auto cwd = std::filesystem::current_path(ec);
+  if (!ec) {
+    key << cwd.string();
+  }
+  return key.str();
 }
 
 std::string expand_config_value(const std::string &value) {
@@ -148,6 +308,12 @@ void load_dotenv_file(const std::filesystem::path &path) {
 }
 
 void load_dotenv_files() {
+  std::lock_guard<std::mutex> lock(g_dotenv_mutex);
+  const std::string cache_key = dotenv_cache_key();
+  if (cache_key == g_loaded_dotenv_cache_key) {
+    return;
+  }
+
   std::vector<std::filesystem::path> candidates;
   if (const char *env_file = std::getenv("GHOSTCLAW_ENV_FILE");
       env_file != nullptr && *env_file != '\0') {
@@ -167,6 +333,8 @@ void load_dotenv_files() {
   for (const auto &candidate : candidates) {
     load_dotenv_file(candidate);
   }
+
+  g_loaded_dotenv_cache_key = cache_key;
 }
 
 void load_channel_config(Config &config, const common::TomlDocument &doc) {
@@ -393,6 +561,42 @@ void load_mcp_config(Config &config, const common::TomlDocument &doc) {
   }
 }
 
+void load_conway_config(Config &config, const common::TomlDocument &doc) {
+  config.conway.enabled = doc.get_bool("conway.enabled", config.conway.enabled);
+  config.conway.api_key =
+      expand_config_value(doc.get_string("conway.api_key", config.conway.api_key));
+  config.conway.wallet_path =
+      expand_config_value(doc.get_string("conway.wallet_path", config.conway.wallet_path));
+  config.conway.config_path =
+      expand_config_value(doc.get_string("conway.config_path", config.conway.config_path));
+  config.conway.api_url = doc.get_string("conway.api_url", config.conway.api_url);
+  config.conway.default_region =
+      doc.get_string("conway.default_region", config.conway.default_region);
+  config.conway.survival_monitoring =
+      doc.get_bool("conway.survival_monitoring", config.conway.survival_monitoring);
+  config.conway.low_compute_threshold_usd =
+      doc.get_double("conway.low_compute_threshold_usd", config.conway.low_compute_threshold_usd);
+  config.conway.critical_threshold_usd =
+      doc.get_double("conway.critical_threshold_usd", config.conway.critical_threshold_usd);
+
+  // Env var overrides for API key
+  if (config.conway.api_key.empty()) {
+    if (const char *env = std::getenv("CONWAY_API_KEY"); env != nullptr && *env != '\0') {
+      config.conway.api_key = std::string(env);
+    }
+  }
+}
+
+void load_soul_config(Config &config, const common::TomlDocument &doc) {
+  config.soul.enabled = doc.get_bool("soul.enabled", config.soul.enabled);
+  config.soul.path = doc.get_string("soul.path", config.soul.path);
+  config.soul.git_versioned = doc.get_bool("soul.git_versioned", config.soul.git_versioned);
+  config.soul.protected_sections =
+      doc.get_string_array("soul.protected_sections", config.soul.protected_sections);
+  config.soul.max_reflections = static_cast<std::uint32_t>(
+      doc.get_u64("soul.max_reflections", config.soul.max_reflections));
+}
+
 void load_google_config(Config &config, const common::TomlDocument &doc) {
   config.google.client_id =
       expand_config_value(doc.get_string("google.client_id", config.google.client_id));
@@ -593,14 +797,12 @@ common::Result<Config> load_config() {
     return common::Result<Config>::success(std::move(config));
   }
 
-  std::ifstream file(path);
-  if (!file) {
-    return common::Result<Config>::failure("Unable to open config file: " + path.string());
+  auto mapped_file = read_config_file(path);
+  if (!mapped_file.ok()) {
+    return common::Result<Config>::failure(mapped_file.error());
   }
 
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  const auto parsed = common::parse_toml(buffer.str());
+  const auto parsed = common::parse_toml(mapped_file.value().view());
   if (!parsed.ok()) {
     return common::Result<Config>::failure(parsed.error());
   }
@@ -719,6 +921,8 @@ common::Result<Config> load_config() {
   load_daemon_config(config, doc);
   load_mcp_config(config, doc);
   load_google_config(config, doc);
+  load_conway_config(config, doc);
+  load_soul_config(config, doc);
 
   config.observability.backend = doc.get_string("observability.backend", config.observability.backend);
   config.runtime.kind = doc.get_string("runtime.kind", config.runtime.kind);
@@ -799,6 +1003,29 @@ common::Result<Config> load_config() {
   }
   if (config.tunnel.cloudflare.has_value()) {
     config.tunnel.cloudflare->command_path = expand_config_path(config.tunnel.cloudflare->command_path);
+  }
+
+  // Auto-inject Conway Terminal as MCP server when conway is enabled and has an API key
+  if (config.conway.enabled && !config.conway.api_key.empty()) {
+    bool conway_mcp_exists = false;
+    for (const auto &server : config.mcp.servers) {
+      if (server.id == "conway") {
+        conway_mcp_exists = true;
+        break;
+      }
+    }
+    if (!conway_mcp_exists) {
+      McpServerConfig conway_mcp;
+      conway_mcp.id = "conway";
+      conway_mcp.command = "npx";
+      conway_mcp.args = {"conway-terminal"};
+      conway_mcp.env["CONWAY_API_KEY"] = config.conway.api_key;
+      if (config.conway.api_url != "https://api.conway.tech") {
+        conway_mcp.env["CONWAY_API_URL"] = config.conway.api_url;
+      }
+      conway_mcp.enabled = true;
+      config.mcp.servers.push_back(std::move(conway_mcp));
+    }
   }
 
   apply_env_overrides(config);
@@ -1067,6 +1294,34 @@ common::Status save_config(const Config &config) {
     file << "client_secret = " << common::quote_toml_string(config.google.client_secret) << "\n";
     file << "scopes = " << string_array_to_toml(config.google.scopes) << "\n";
     file << "redirect_port = " << config.google.redirect_port << "\n";
+  }
+
+  // Conway config
+  if (config.conway.enabled || !config.conway.api_key.empty()) {
+    file << "\n[conway]\n";
+    file << "enabled = " << bool_to_toml(config.conway.enabled) << "\n";
+    if (!config.conway.api_key.empty()) {
+      file << "api_key = " << common::quote_toml_string(config.conway.api_key) << "\n";
+    }
+    file << "wallet_path = " << common::quote_toml_string(config.conway.wallet_path) << "\n";
+    file << "config_path = " << common::quote_toml_string(config.conway.config_path) << "\n";
+    file << "api_url = " << common::quote_toml_string(config.conway.api_url) << "\n";
+    file << "default_region = " << common::quote_toml_string(config.conway.default_region) << "\n";
+    file << "survival_monitoring = " << bool_to_toml(config.conway.survival_monitoring) << "\n";
+    file << "low_compute_threshold_usd = " << config.conway.low_compute_threshold_usd << "\n";
+    file << "critical_threshold_usd = " << config.conway.critical_threshold_usd << "\n";
+  }
+
+  // Soul config
+  if (config.soul.enabled) {
+    file << "\n[soul]\n";
+    file << "enabled = " << bool_to_toml(config.soul.enabled) << "\n";
+    file << "path = " << common::quote_toml_string(config.soul.path) << "\n";
+    file << "git_versioned = " << bool_to_toml(config.soul.git_versioned) << "\n";
+    if (!config.soul.protected_sections.empty()) {
+      file << "protected_sections = " << string_array_to_toml(config.soul.protected_sections) << "\n";
+    }
+    file << "max_reflections = " << config.soul.max_reflections << "\n";
   }
 
   file.close();
