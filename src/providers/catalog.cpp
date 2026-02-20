@@ -567,7 +567,7 @@ const std::vector<ProviderInfo> &provider_catalog() {
   return catalog;
 }
 
-std::optional<ProviderInfo> find_provider(std::string id_or_alias) {
+std::optional<ProviderInfo> find_provider(const std::string &id_or_alias) {
   const std::string normalized = normalize_id(id_or_alias);
   for (const auto &entry : provider_catalog()) {
     if (entry.id == normalized) {

@@ -26,7 +26,7 @@ struct ModelCatalog {
 };
 
 [[nodiscard]] const std::vector<ProviderInfo> &provider_catalog();
-[[nodiscard]] std::optional<ProviderInfo> find_provider(std::string id_or_alias);
+[[nodiscard]] std::optional<ProviderInfo> find_provider(const std::string &id_or_alias);
 
 [[nodiscard]] common::Result<ModelCatalog>
 refresh_model_catalog(const config::Config &config, const std::string &provider,

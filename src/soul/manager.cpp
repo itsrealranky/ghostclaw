@@ -142,8 +142,14 @@ common::Status SoulManager::update_section(const std::string &section,
     const auto section_end =
         (next_heading != std::string::npos) ? next_heading : current.size();
 
-    current = current.substr(0, content_start) + "\n" + content + "\n" +
-              current.substr(section_end);
+    std::string updated;
+    updated.reserve(current.size() + content.size() + 2);
+    updated.append(current, 0, content_start);
+    updated.push_back('\n');
+    updated.append(content);
+    updated.push_back('\n');
+    updated.append(current, section_end, std::string::npos);
+    current = std::move(updated);
   }
 
   std::ofstream out(soul_path_, std::ios::trunc);
