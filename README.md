@@ -12,6 +12,7 @@
 
 👑 **Grandfather of OpenClaw**
 ✨ **Smallest and Fastest Feature-Complete Implementation of OpenClaw**
+🌐 **First C++ Agent Framework with Native Conway Cloud / x402 Integration**
 
 ⚡ Runs on $10 hardware with ~10MB RAM and a ~2MB binary — 99% less memory than OpenClaw
 
@@ -23,7 +24,7 @@
 
 Fast, small, and fully autonomous AI assistant infrastructure — deploy anywhere, swap anything.
 
-`~1.9MB binary` · `~15ms warm start` · `30+ providers` · `10 traits` · `Pluggable everything`
+`~1.9MB binary` · `~20ms warm start` · `30+ providers` · `10 traits` · `Conway Cloud native` · `Self-evolving agent`
 
 </div>
 
@@ -33,11 +34,15 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 
 |     🪶 **Ultra-Lightweight**     |        ⚡ **Lightning Fast**        |  🚀 **True Portability**   |
 | :------------------------------: | :---------------------------------: | :------------------------: |
-| ~2MB peak footprint<br>~10MB RSS | 15ms warm start<br>235ms cold start | Single binary<br>ARM + x86 |
+| ~2MB peak footprint<br>~10MB RSS | 20ms warm start<br>240ms cold start | Single binary<br>ARM + x86 |
 
 |            🔄 **Fully Swappable**             |           🔓 **No Lock-in**           |          🔒 **Secure by Design**          |
 | :-------------------------------------------: | :-----------------------------------: | :---------------------------------------: |
 | Trait-based architecture<br>Zero code changes | 30+ AI providers<br>OpenAI-compatible | Pairing + sandboxing<br>Workspace scoping |
+
+|           🌐 **Conway Cloud Native**           |        🧬 **Self-Evolving**         |        🔮 **Sovereign Operation**         |
+| :--------------------------------------------: | :---------------------------------: | :---------------------------------------: |
+| Spin up VMs, deploy apps<br>x402 USDC payments | SOUL.md living identity<br>Skill IQ | Autonomous skill install<br>Tool profiler |
 
 </div>
 
@@ -68,6 +73,28 @@ Fast, small, and fully autonomous AI assistant infrastructure — deploy anywher
 
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+### 🌐 **Conway Cloud Integration** _(New)_
+
+- 🖥️ Spawn Linux VMs via Conway Compute
+- 🌍 Buy and manage domains autonomously
+- 💸 x402 machine-to-machine USDC payments
+- 🔑 Auto-inject `conway-terminal` MCP server
+
+</td>
+<td width="50%">
+
+### 🧬 **Self-Evolving Agent** _(New)_
+
+- 📜 `SOUL.md` living identity that grows over time
+- 🎯 `skill_discover` / `skill_auto_install` / `skill_create`
+- 📊 Tool usage profiler with `self_optimize`
+- 💓 Survival tier heartbeat monitoring
+
+</td>
+</tr>
 </table>
 
 ---
@@ -84,8 +111,8 @@ Local machine quick benchmark (macOS arm64, Feb 2026) normalized for 0.8GHz edge
 | ------------------ | :-----------: | :------------: | :-------------: | :--------------: | :------------------: |
 | **Language**       |  TypeScript   |     Python     |       Go        |       Rust       |       **C++**        |
 | **RAM**            |     > 1GB     |    > 100MB     |     < 10MB      |      < 5MB       |      **~10MB**       |
-| **Startup (warm)** |    > 500ms    |     > 30ms     |     < 100ms     |      < 10ms      |      **~15ms**       |
-| **Cold Start**     |     > 5s      |      > 1s      |      < 1s       |      ~440ms      |      **~235ms**      |
+| **Startup (warm)** |    > 500ms    |     > 30ms     |     < 100ms     |      < 10ms      |      **~20ms**       |
+| **Cold Start**     |     > 5s      |      > 1s      |      < 1s       |      ~440ms      |      **~240ms**      |
 | **Binary Size**    | ~28MB (dist)  | N/A (Scripts)  |      ~8MB       |      ~3.4MB      |      **1.9MB**       |
 | **Cost**           | Mac Mini $599 | Linux SBC ~$50 | Linux Board $10 | Any hardware $10 | **Any hardware $10** |
 
@@ -97,21 +124,21 @@ Local machine quick benchmark (macOS arm64, Feb 2026) normalized for 0.8GHz edge
 <br>
 
 ```
-                    GhostClaw v0.1.0 — Release Build
+                    GhostClaw v0.2.0 — Release Build
   ─────────────────────────────────────────────────────────
 
   BINARY          1,989,792 bytes stripped (1.9 MB)
                   2,406,968 bytes unstripped (2.3 MB)
 
-  STARTUP         ~15ms warm   (13.5–17.4ms, median of 20 runs)
-                  ~235ms cold  (226–245ms, median of 10 cache-flushed runs)
+  STARTUP         ~20ms warm   (median of 20 runs, --help)
+                  ~240ms pseudo-cold  (fresh binary path, median of 10 runs)
 
   MEMORY          ~1.9 MB peak footprint  (process-only, --version)
                   ~4.9 MB peak footprint  (doctor, full diagnostics)
                   ~9.5 MB RSS             (includes shared system dylibs)
 
   ─────────────────────────────────────────────────────────
-  Measured with /usr/bin/time -lp + gettimeofday() wrapper
+  Measured Feb 20 2026 · /usr/bin/time -lp + gettimeofday() wrapper
 ```
 
 </details>
@@ -186,6 +213,38 @@ ghostclaw status
 ghostclaw doctor
 ```
 
+### 🌐 Conway Cloud — Sovereign Operation
+
+```bash
+# Connect your Conway account
+ghostclaw conway setup --api-key <YOUR_CONWAY_API_KEY>
+
+# Check survival tier and credit balance
+ghostclaw conway status
+
+# Spin up a VM, deploy an app, or buy a domain — the agent does it
+ghostclaw agent -m "Deploy a Node.js app on Conway Cloud and register a .xyz domain"
+
+# Enable full sovereign mode (SOUL.md + skill IQ + survival heartbeat)
+ghostclaw sovereign start
+ghostclaw sovereign status
+ghostclaw sovereign evolve    # trigger a manual evolution cycle
+```
+
+> Once `conway.enabled = true` and an API key is set, GhostClaw **automatically** injects `conway-terminal` as an MCP server — no extra config required.
+
+### 🧬 SOUL.md — Living Agent Identity
+
+GhostClaw agents can write, read, and evolve their own `SOUL.md` identity document using built-in soul tools:
+
+```
+soul_read      — read the current SOUL.md
+soul_update    — update a named section (name, purpose, values, …)
+soul_reflect   — append a timestamped reflection entry
+```
+
+The file is git-versioned automatically on every update, giving you a full history of how the agent evolved.
+
 ### 🐳 Docker
 
 ```bash
@@ -213,18 +272,20 @@ docker run -d --name ghostclaw-daemon -p 8080:8080 ghostclaw daemon --host 0.0.0
 <details>
 <summary><b>📋 View Subsystem Details</b></summary>
 
-| Subsystem            | Trait          | Ships with                                                                                                                                                        | Extend                                                    |
-| -------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 🤖 **AI Models**     | Provider       | 30+ providers (OpenRouter, Anthropic, OpenAI, Google, Ollama, Groq, Cerebras, Mistral, xAI, DeepSeek, Together, Fireworks, NVIDIA, Cloudflare, HuggingFace, etc.) | `custom:https://your-api.com` — any OpenAI-compatible API |
-| 💬 **Channels**      | Channel        | CLI, Telegram, Discord, Slack, iMessage, Matrix, WhatsApp, Signal, Webhook                                                                                        | Any messaging API                                         |
-| 🧠 **Memory**        | Memory         | SQLite with hybrid search (FTS5 + vector cosine similarity), Markdown                                                                                             | Any persistence backend                                   |
-| 🛠️ **Tools**         | Tool           | shell, file_read, file_write, memory_store, memory_recall, memory_forget, browser_open, web_search, canvas                                                        | Any capability                                            |
-| 📊 **Observability** | Observer       | Noop, Log, Multi                                                                                                                                                  | Prometheus, OTel                                          |
-| ⚙️ **Runtime**       | RuntimeAdapter | Native (Mac/Linux)                                                                                                                                                | Docker (planned)                                          |
-| 🔒 **Security**      | SecurityPolicy | Gateway pairing, sandbox, allowlists, rate limits, filesystem scoping, encrypted secrets                                                                          | —                                                         |
-| 👤 **Identity**      | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON)                                                                                                                            | Any identity format                                       |
-| 🌐 **Tunnel**        | Tunnel         | None, Cloudflare, Tailscale, ngrok, Custom                                                                                                                        | Any tunnel binary                                         |
-| 🎯 **Skills**        | Loader         | TOML manifests + SKILL.md instructions                                                                                                                            | Community skill packs                                     |
+| Subsystem            | Trait          | Ships with                                                                                                                                                                                                                             | Extend                                                    |
+| -------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 🤖 **AI Models**     | Provider       | 30+ providers (OpenRouter, Anthropic, OpenAI, Google, Ollama, Groq, Cerebras, Mistral, xAI, DeepSeek, Together, Fireworks, NVIDIA, Cloudflare, HuggingFace, etc.)                                                                      | `custom:https://your-api.com` — any OpenAI-compatible API |
+| 💬 **Channels**      | Channel        | CLI, Telegram, Discord, Slack, iMessage, Matrix, WhatsApp, Signal, Webhook                                                                                                                                                             | Any messaging API                                         |
+| 🧠 **Memory**        | Memory         | SQLite with hybrid search (FTS5 + vector cosine similarity), Markdown                                                                                                                                                                  | Any persistence backend                                   |
+| 🛠️ **Tools**         | Tool           | shell, file_read, file_write, memory_store, memory_recall, memory_forget, browser_open, web_search, canvas, soul_read, soul_update, soul_reflect, skill_discover, skill_auto_install, skill_create, tool_profile_report, self_optimize | Any capability                                            |
+| 📊 **Observability** | Observer       | Noop, Log, Multi                                                                                                                                                                                                                       | Prometheus, OTel                                          |
+| ⚙️ **Runtime**       | RuntimeAdapter | Native (Mac/Linux)                                                                                                                                                                                                                     | Docker (planned)                                          |
+| 🔒 **Security**      | SecurityPolicy | Gateway pairing, sandbox, allowlists, rate limits, filesystem scoping, encrypted secrets, tool policy groups (conway, soul, profiler)                                                                                                  | —                                                         |
+| 👤 **Identity**      | IdentityConfig | OpenClaw (markdown), AIEOS v1.1 (JSON), SOUL.md (self-authored, git-versioned)                                                                                                                                                         | Any identity format                                       |
+| 🌐 **Tunnel**        | Tunnel         | None, Cloudflare, Tailscale, ngrok, Custom                                                                                                                                                                                             | Any tunnel binary                                         |
+| 🎯 **Skills**        | Loader         | TOML manifests + SKILL.md instructions                                                                                                                                                                                                 | Community skill packs, autonomous skill install           |
+| ☁️ **Conway Cloud**  | McpServer      | conway-terminal MCP (auto-injected): Compute, Domains, x402 USDC payments                                                                                                                                                              | Any Conway API endpoint                                   |
+| 💓 **Survival**      | Heartbeat      | Survival tier monitoring (normal / low_compute / critical / dead), cron-based balance checks                                                                                                                                           | Custom survival strategies                                |
 
 </details>
 
@@ -315,6 +376,23 @@ encrypt = true
 [browser]
 enabled = false
 allowed_domains = ["docs.rs"]
+
+# Conway Cloud — sovereign operation (new)
+[conway]
+enabled = true
+api_key = ""                         # or set CONWAY_API_KEY env var
+wallet_path = "~/.conway/wallet.json"
+survival_monitoring = true
+low_compute_threshold_usd = 0.50
+critical_threshold_usd = 0.10
+
+# Self-evolving SOUL.md identity (new)
+[soul]
+enabled = true
+path = "SOUL.md"
+git_versioned = true
+max_reflections = 100
+protected_sections = ["identity", "core_values"]
 ```
 
 </details>
@@ -364,6 +442,31 @@ allowed_domains = ["docs.rs"]
 
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+### Conway Commands _(New)_
+
+| Command         | Description                         |
+| --------------- | ----------------------------------- |
+| `conway setup`  | Connect Conway account & API key    |
+| `conway status` | Show survival tier & credit balance |
+| `conway fund`   | Add credits to Conway wallet        |
+
+</td>
+<td width="50%">
+
+### Sovereign Commands _(New)_
+
+| Command            | Description                        |
+| ------------------ | ---------------------------------- |
+| `sovereign start`  | Activate full sovereign agent mode |
+| `sovereign status` | Show SOUL.md + survival + skill IQ |
+| `sovereign evolve` | Trigger manual evolution cycle     |
+| `sovereign stop`   | Deactivate sovereign mode          |
+
+</td>
+</tr>
 </table>
 
 ---
@@ -409,6 +512,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Implement a trait, submit a PR:
 - 🧠 **New Memory** → `src/memory/`
 - 🌐 **New Tunnel** → `src/tunnel/`
 - 🎯 **New Skill** → `~/.ghostclaw/workspace/skills/<name>/`
+- 🌐 **Conway Module** → `src/conway/`
+- 📜 **Soul Module** → `src/soul/`
+- 📊 **Profiler** → `src/profiler/`
 
 </td>
 </tr>
