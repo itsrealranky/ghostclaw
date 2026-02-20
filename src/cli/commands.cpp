@@ -6,27 +6,37 @@
 #include "ghostclaw/multi/orchestrator.hpp"
 #include "ghostclaw/channels/channel_manager.hpp"
 #include "ghostclaw/common/fs.hpp"
+#include "ghostclaw/common/json_util.hpp"
 #include "ghostclaw/config/config.hpp"
+#include "ghostclaw/conway/module.hpp"
 #include "ghostclaw/daemon/daemon.hpp"
 #include "ghostclaw/doctor/diagnostics.hpp"
 #include "ghostclaw/gateway/server.hpp"
+#include "ghostclaw/hardware/module.hpp"
 #include "ghostclaw/heartbeat/cron.hpp"
 #include "ghostclaw/heartbeat/cron_store.hpp"
 #include "ghostclaw/integrations/registry.hpp"
 #include "ghostclaw/migration/module.hpp"
 #include "ghostclaw/onboard/wizard.hpp"
+#include "ghostclaw/peripheral/module.hpp"
+#include "ghostclaw/providers/catalog.hpp"
 #include "ghostclaw/runtime/app.hpp"
+#include "ghostclaw/service/module.hpp"
 #include "ghostclaw/skills/import_openclaw.hpp"
 #include "ghostclaw/skills/registry.hpp"
+#include "ghostclaw/soul/manager.hpp"
 #include "ghostclaw/tts/tts.hpp"
 #include "ghostclaw/voice/wake.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -387,6 +397,27 @@ int run_status() {
   if (ws.ok()) {
     std::cout << "Workspace: " << ws.value().string() << "\n";
   }
+
+  // Show SOUL.md status
+  if (ws.ok()) {
+    const auto soul_path = ws.value() / "SOUL.md";
+    if (std::filesystem::exists(soul_path)) {
+      std::cout << "SOUL.md: " << soul_path.string() << "\n";
+    }
+  }
+
+  // Show Conway status
+  const auto &conway = cfg.value().conway;
+  if (conway.enabled || !conway.api_key.empty()) {
+    std::cout << "\nConway:\n";
+    std::cout << "  Enabled: " << (conway.enabled ? "yes" : "no") << "\n";
+    auto wallet = conway::read_wallet_address(conway);
+    if (wallet.ok()) {
+      std::cout << "  Wallet: " << wallet.value() << "\n";
+    }
+    std::cout << "  Survival monitoring: "
+              << (conway.survival_monitoring ? "active" : "inactive") << "\n";
+  }
   return 0;
 }
 
@@ -486,6 +517,119 @@ int run_cron(std::vector<std::string> args) {
 
   heartbeat::CronStore store(workspace.value() / "cron" / "jobs.db");
 
+  auto parse_delay = [](const std::string &value) -> common::Result<std::chrono::seconds> {
+    const std::string trimmed = common::trim(value);
+    if (trimmed.empty()) {
+      return common::Result<std::chrono::seconds>::failure("delay value is empty");
+    }
+
+    const char suffix = trimmed.back();
+    std::string number_part = trimmed;
+    long long multiplier = 1;
+    if (suffix == 's' || suffix == 'm' || suffix == 'h' || suffix == 'd') {
+      number_part = trimmed.substr(0, trimmed.size() - 1);
+      if (suffix == 'm') {
+        multiplier = 60;
+      } else if (suffix == 'h') {
+        multiplier = 3600;
+      } else if (suffix == 'd') {
+        multiplier = 86400;
+      }
+    }
+
+    long long number = 0;
+    try {
+      number = std::stoll(number_part);
+    } catch (...) {
+      return common::Result<std::chrono::seconds>::failure("invalid delay value: " + value);
+    }
+    if (number < 0) {
+      return common::Result<std::chrono::seconds>::failure("delay must be non-negative");
+    }
+    return common::Result<std::chrono::seconds>::success(
+        std::chrono::seconds(number * multiplier));
+  };
+
+  auto parse_rfc3339_utc = [](const std::string &value)
+      -> common::Result<std::chrono::system_clock::time_point> {
+    std::tm tm{};
+    std::istringstream stream(value);
+    stream >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+    if (stream.fail()) {
+      return common::Result<std::chrono::system_clock::time_point>::failure(
+          "invalid RFC3339 timestamp: " + value);
+    }
+    if (!stream.eof()) {
+      char suffix = '\0';
+      stream >> suffix;
+      if (suffix != 'Z') {
+        return common::Result<std::chrono::system_clock::time_point>::failure(
+            "timestamp must end with Z (UTC): " + value);
+      }
+    }
+
+#if defined(_WIN32)
+    const std::time_t as_time_t = _mkgmtime(&tm);
+#else
+    const std::time_t as_time_t = timegm(&tm);
+#endif
+    if (as_time_t < 0) {
+      return common::Result<std::chrono::system_clock::time_point>::failure(
+          "failed to parse timestamp: " + value);
+    }
+    return common::Result<std::chrono::system_clock::time_point>::success(
+        std::chrono::system_clock::from_time_t(as_time_t));
+  };
+
+  auto next_run_from_expression = [](const std::string &expression)
+      -> common::Result<std::chrono::system_clock::time_point> {
+    if (common::starts_with(expression, "@every:")) {
+      long long every_ms = 0;
+      try {
+        every_ms = std::stoll(expression.substr(std::string("@every:").size()));
+      } catch (...) {
+        return common::Result<std::chrono::system_clock::time_point>::failure(
+            "invalid @every expression");
+      }
+      if (every_ms <= 0) {
+        return common::Result<std::chrono::system_clock::time_point>::failure(
+            "invalid @every interval");
+      }
+      return common::Result<std::chrono::system_clock::time_point>::success(
+          std::chrono::system_clock::now() + std::chrono::milliseconds(every_ms));
+    }
+    if (common::starts_with(expression, "@at:")) {
+      long long unix_seconds = 0;
+      try {
+        unix_seconds = std::stoll(expression.substr(std::string("@at:").size()));
+      } catch (...) {
+        return common::Result<std::chrono::system_clock::time_point>::failure(
+            "invalid @at expression");
+      }
+      auto at_time = std::chrono::system_clock::time_point(std::chrono::seconds(unix_seconds));
+      if (at_time < std::chrono::system_clock::now()) {
+        at_time = std::chrono::system_clock::now() + std::chrono::seconds(1);
+      }
+      return common::Result<std::chrono::system_clock::time_point>::success(at_time);
+    }
+
+    auto parsed = heartbeat::CronExpression::parse(expression);
+    if (!parsed.ok()) {
+      return common::Result<std::chrono::system_clock::time_point>::failure(parsed.error());
+    }
+    return common::Result<std::chrono::system_clock::time_point>::success(
+        parsed.value().next_occurrence());
+  };
+
+  auto make_job_id = []() {
+    static std::atomic<std::uint64_t> sequence{0};
+    const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+    return std::string("job-") + std::to_string(micros) + "-" +
+           std::to_string(sequence.fetch_add(1));
+  };
+
   if (args.empty() || args[0] == "list") {
     auto jobs = store.list_jobs();
     if (!jobs.ok()) {
@@ -493,19 +637,95 @@ int run_cron(std::vector<std::string> args) {
       return 1;
     }
     for (const auto &job : jobs.value()) {
-      std::cout << job.id << " | " << job.expression << " | " << job.command << "\n";
+      std::cout << job.id << " | " << job.expression << " | " << job.command;
+      if (job.last_status.has_value() && *job.last_status == "__paused__") {
+        std::cout << " | paused";
+      }
+      std::cout << "\n";
     }
     return 0;
   }
 
   if (args[0] == "add") {
-    if (args.size() < 3) {
-      std::cerr << "usage: ghostclaw cron add <expression> <command>\n";
+    std::vector<std::string> add_args(args.begin() + 1, args.end());
+    std::string timezone;
+    (void)take_option(add_args, "--tz", "", timezone);
+    if (add_args.size() < 2) {
+      std::cerr << "usage: ghostclaw cron add <expression> [--tz <IANA_TZ>] <command>\n";
       return 1;
     }
-    auto expression = heartbeat::CronExpression::parse(args[1]);
+    auto expression = heartbeat::CronExpression::parse(add_args[0]);
     if (!expression.ok()) {
       std::cerr << expression.error() << "\n";
+      return 1;
+    }
+
+    std::string command = add_args[1];
+    for (std::size_t i = 2; i < add_args.size(); ++i) {
+      command += " " + add_args[i];
+    }
+
+    heartbeat::CronJob job;
+    job.id = make_job_id();
+    job.expression = add_args[0];
+    job.command = command;
+    job.next_run = expression.value().next_occurrence();
+    auto added = store.add_job(job);
+    if (!added.ok()) {
+      std::cerr << added.error() << "\n";
+      return 1;
+    }
+    if (!timezone.empty()) {
+      std::cout << "Note: timezone hint '" << timezone
+                << "' recorded in command input only; scheduler currently runs in local time.\n";
+    }
+    std::cout << "Added cron job: " << job.id << "\n";
+    return 0;
+  }
+
+  if (args[0] == "add-at") {
+    if (args.size() < 3) {
+      std::cerr << "usage: ghostclaw cron add-at <rfc3339_timestamp> <command>\n";
+      return 1;
+    }
+    auto at_time = parse_rfc3339_utc(args[1]);
+    if (!at_time.ok()) {
+      std::cerr << at_time.error() << "\n";
+      return 1;
+    }
+    std::string command = args[2];
+    for (std::size_t i = 3; i < args.size(); ++i) {
+      command += " " + args[i];
+    }
+
+    heartbeat::CronJob job;
+    job.id = make_job_id();
+    job.expression = "@at:" + heartbeat::time_point_to_unix_string(at_time.value());
+    job.command = command;
+    job.next_run = at_time.value();
+    auto added = store.add_job(job);
+    if (!added.ok()) {
+      std::cerr << added.error() << "\n";
+      return 1;
+    }
+    std::cout << "Added one-shot cron job: " << job.id << "\n";
+    return 0;
+  }
+
+  if (args[0] == "add-every") {
+    if (args.size() < 3) {
+      std::cerr << "usage: ghostclaw cron add-every <every_ms> <command>\n";
+      return 1;
+    }
+    long long every_ms = 0;
+    try {
+      every_ms = std::stoll(args[1]);
+    } catch (...) {
+      std::cerr << "invalid every_ms: " << args[1] << "\n";
+      return 1;
+    }
+    if (every_ms <= 0) {
+      std::cerr << "every_ms must be > 0\n";
       return 1;
     }
 
@@ -515,16 +735,47 @@ int run_cron(std::vector<std::string> args) {
     }
 
     heartbeat::CronJob job;
-    job.id = "job-" + std::to_string(std::time(nullptr));
-    job.expression = args[1];
+    job.id = make_job_id();
+    job.expression = "@every:" + std::to_string(every_ms);
     job.command = command;
-    job.next_run = expression.value().next_occurrence();
+    job.next_run = std::chrono::system_clock::now() + std::chrono::milliseconds(every_ms);
     auto added = store.add_job(job);
     if (!added.ok()) {
       std::cerr << added.error() << "\n";
       return 1;
     }
-    std::cout << "Added cron job: " << job.id << "\n";
+    std::cout << "Added interval cron job: " << job.id << "\n";
+    return 0;
+  }
+
+  if (args[0] == "once") {
+    if (args.size() < 3) {
+      std::cerr << "usage: ghostclaw cron once <delay> <command>\n";
+      return 1;
+    }
+    auto delay = parse_delay(args[1]);
+    if (!delay.ok()) {
+      std::cerr << delay.error() << "\n";
+      return 1;
+    }
+
+    std::string command = args[2];
+    for (std::size_t i = 3; i < args.size(); ++i) {
+      command += " " + args[i];
+    }
+
+    const auto run_at = std::chrono::system_clock::now() + delay.value();
+    heartbeat::CronJob job;
+    job.id = make_job_id();
+    job.expression = "@at:" + heartbeat::time_point_to_unix_string(run_at);
+    job.command = command;
+    job.next_run = run_at;
+    auto added = store.add_job(job);
+    if (!added.ok()) {
+      std::cerr << added.error() << "\n";
+      return 1;
+    }
+    std::cout << "Added one-time cron job: " << job.id << "\n";
     return 0;
   }
 
@@ -542,8 +793,357 @@ int run_cron(std::vector<std::string> args) {
     return 0;
   }
 
+  if (args[0] == "pause" || args[0] == "resume") {
+    if (args.size() < 2) {
+      std::cerr << "usage: ghostclaw cron " << args[0] << " <id>\n";
+      return 1;
+    }
+    auto jobs = store.list_jobs();
+    if (!jobs.ok()) {
+      std::cerr << jobs.error() << "\n";
+      return 1;
+    }
+    auto it = std::find_if(jobs.value().begin(), jobs.value().end(),
+                           [&](const heartbeat::CronJob &job) { return job.id == args[1]; });
+    if (it == jobs.value().end()) {
+      std::cout << "Not found\n";
+      return 0;
+    }
+
+    if (args[0] == "pause") {
+      const auto far_future = std::chrono::system_clock::now() + std::chrono::hours(24 * 365 * 10);
+      auto paused = store.update_after_run(it->id, "__paused__", far_future);
+      if (!paused.ok()) {
+        std::cerr << paused.error() << "\n";
+        return 1;
+      }
+      std::cout << "Paused\n";
+      return 0;
+    }
+
+    auto next_run = next_run_from_expression(it->expression);
+    if (!next_run.ok()) {
+      std::cerr << next_run.error() << "\n";
+      return 1;
+    }
+    auto resumed = store.update_after_run(it->id, "__resumed__", next_run.value());
+    if (!resumed.ok()) {
+      std::cerr << resumed.error() << "\n";
+      return 1;
+    }
+    std::cout << "Resumed\n";
+    return 0;
+  }
+
   std::cerr << "unknown cron subcommand\n";
   return 1;
+}
+
+std::string humanize_age(const std::chrono::system_clock::time_point timestamp) {
+  const auto now = std::chrono::system_clock::now();
+  const auto age = std::chrono::duration_cast<std::chrono::seconds>(now - timestamp).count();
+  if (age < 0) {
+    return "just now";
+  }
+  if (age < 60) {
+    return std::to_string(age) + "s ago";
+  }
+  if (age < 3600) {
+    return std::to_string(age / 60) + "m ago";
+  }
+  if (age < 86400) {
+    return std::to_string(age / 3600) + "h ago";
+  }
+  return std::to_string(age / 86400) + "d ago";
+}
+
+int run_models(std::vector<std::string> args) {
+  if (args.empty()) {
+    std::cerr << "usage: ghostclaw models refresh [--provider <id>] [--force]\n";
+    return 1;
+  }
+
+  const std::string subcommand = common::to_lower(common::trim(args[0]));
+  args.erase(args.begin());
+  if (subcommand != "refresh") {
+    std::cerr << "unknown models subcommand\n";
+    return 1;
+  }
+
+  std::string provider;
+  (void)take_option(args, "--provider", "", provider);
+  const bool force = take_flag(args, "--force");
+  if (!args.empty()) {
+    std::cerr << "unknown models arguments: " << join_tokens(args) << "\n";
+    return 1;
+  }
+
+  auto cfg = config::load_config();
+  if (!cfg.ok()) {
+    std::cerr << cfg.error() << "\n";
+    return 1;
+  }
+
+  if (!provider.empty()) {
+    auto refreshed = providers::refresh_model_catalog(cfg.value(), provider, force);
+    if (!refreshed.ok()) {
+      std::cerr << refreshed.error() << "\n";
+      return 1;
+    }
+    std::cout << refreshed.value().provider << ": " << refreshed.value().models.size()
+              << " model(s) "
+              << (refreshed.value().from_cache ? "(cached " : "(updated ")
+              << humanize_age(refreshed.value().updated_at) << ")\n";
+    const std::size_t preview = std::min<std::size_t>(5, refreshed.value().models.size());
+    for (std::size_t i = 0; i < preview; ++i) {
+      std::cout << "  - " << refreshed.value().models[i] << "\n";
+    }
+    if (refreshed.value().models.size() > preview) {
+      std::cout << "  ... and " << (refreshed.value().models.size() - preview) << " more\n";
+    }
+    return 0;
+  }
+
+  auto catalogs = providers::refresh_model_catalogs(cfg.value(), force);
+  if (!catalogs.ok()) {
+    std::cerr << catalogs.error() << "\n";
+    return 1;
+  }
+  for (const auto &catalog : catalogs.value()) {
+    std::cout << catalog.provider << ": " << catalog.models.size() << " model(s) "
+              << (catalog.from_cache ? "(cached " : "(updated ")
+              << humanize_age(catalog.updated_at) << ")\n";
+  }
+  return 0;
+}
+
+int run_providers() {
+  auto cfg = config::load_config();
+  if (!cfg.ok()) {
+    std::cerr << cfg.error() << "\n";
+    return 1;
+  }
+
+  const std::string active_provider = common::to_lower(common::trim(cfg.value().default_provider));
+  const auto &catalog = providers::provider_catalog();
+
+  std::cout << "Supported providers (" << catalog.size() << ")\n";
+  for (const auto &provider : catalog) {
+    bool is_active = provider.id == active_provider;
+    if (!is_active) {
+      for (const auto &alias : provider.aliases) {
+        if (common::to_lower(alias) == active_provider) {
+          is_active = true;
+          break;
+        }
+      }
+    }
+
+    std::cout << "  " << provider.id << " - " << provider.display_name;
+    if (provider.local) {
+      std::cout << " [local]";
+    }
+    if (is_active) {
+      std::cout << " [active]";
+    }
+    if (!provider.aliases.empty()) {
+      std::cout << " (aliases: ";
+      for (std::size_t i = 0; i < provider.aliases.size(); ++i) {
+        if (i != 0) {
+          std::cout << ", ";
+        }
+        std::cout << provider.aliases[i];
+      }
+      std::cout << ")";
+    }
+    std::cout << "\n";
+  }
+  std::cout << "  custom:<url> - OpenAI-compatible endpoint\n";
+  return 0;
+}
+
+int run_hardware(std::vector<std::string> args) {
+  if (args.empty()) {
+    std::cerr << "usage: ghostclaw hardware <discover|introspect|info>\n";
+    return 1;
+  }
+
+  const std::string subcommand = common::to_lower(common::trim(args[0]));
+  args.erase(args.begin());
+
+  if (subcommand == "discover") {
+    auto devices = hardware::discover_devices();
+    if (!devices.ok()) {
+      std::cerr << devices.error() << "\n";
+      return 1;
+    }
+    if (devices.value().empty()) {
+      std::cout << "No USB or serial devices detected.\n";
+      return 0;
+    }
+    for (const auto &device : devices.value()) {
+      std::cout << device.path << " | " << device.board << " | " << device.transport << "\n";
+    }
+    return 0;
+  }
+
+  if (subcommand == "introspect") {
+    if (args.empty()) {
+      std::cerr << "usage: ghostclaw hardware introspect <path>\n";
+      return 1;
+    }
+    auto info = hardware::introspect_device(args[0]);
+    if (!info.ok()) {
+      std::cerr << info.error() << "\n";
+      return 1;
+    }
+    std::cout << "path: " << info.value().path << "\n";
+    std::cout << "exists: " << (info.value().exists ? "yes" : "no") << "\n";
+    std::cout << "serial_like: " << (info.value().serial_like ? "yes" : "no") << "\n";
+    std::cout << "board: " << info.value().board << "\n";
+    std::cout << "transport: " << info.value().transport << "\n";
+    return info.value().exists ? 0 : 1;
+  }
+
+  if (subcommand == "info") {
+    std::string chip = "stm32f401re";
+    (void)take_option(args, "--chip", "", chip);
+    if (!args.empty()) {
+      std::cerr << "unknown hardware info arguments: " << join_tokens(args) << "\n";
+      return 1;
+    }
+    std::cout << hardware::chip_info_summary(chip) << "\n";
+    return 0;
+  }
+
+  std::cerr << "unknown hardware subcommand\n";
+  return 1;
+}
+
+int run_peripheral(std::vector<std::string> args) {
+  if (args.empty()) {
+    std::cerr << "usage: ghostclaw peripheral <list|add|flash|setup-uno-q|flash-nucleo>\n";
+    return 1;
+  }
+
+  const std::string subcommand = common::to_lower(common::trim(args[0]));
+  args.erase(args.begin());
+
+  if (subcommand == "list") {
+    auto entries = peripheral::list_peripherals();
+    if (!entries.ok()) {
+      std::cerr << entries.error() << "\n";
+      return 1;
+    }
+    if (entries.value().empty()) {
+      std::cout << "No peripherals configured.\n";
+      return 0;
+    }
+    for (const auto &entry : entries.value()) {
+      std::cout << entry.board << " | " << entry.transport << " | " << entry.path << "\n";
+    }
+    return 0;
+  }
+
+  if (subcommand == "add") {
+    if (args.size() < 2) {
+      std::cerr << "usage: ghostclaw peripheral add <board> <path>\n";
+      return 1;
+    }
+    auto added = peripheral::add_peripheral(args[0], args[1]);
+    if (!added.ok()) {
+      std::cerr << added.error() << "\n";
+      return 1;
+    }
+    std::cout << "peripheral added\n";
+    return 0;
+  }
+
+  if (subcommand == "flash") {
+    std::string port;
+    std::string board;
+    std::string firmware;
+    const bool execute = take_flag(args, "--execute");
+    (void)take_option(args, "--port", "-p", port);
+    (void)take_option(args, "--board", "-b", board);
+    (void)take_option(args, "--firmware", "-f", firmware);
+    if (!args.empty()) {
+      std::cerr << "usage: ghostclaw peripheral flash [--board <board>] [--port <path>] [--firmware <file>] [--execute]\n";
+      return 1;
+    }
+
+    peripheral::PeripheralFlashOptions options;
+    options.execute = execute;
+    if (!board.empty()) {
+      options.board = board;
+    }
+    if (!port.empty()) {
+      options.port = port;
+    }
+    if (!firmware.empty()) {
+      options.firmware = firmware;
+    }
+
+    auto flashed = peripheral::flash_peripheral(options);
+    if (!flashed.ok()) {
+      std::cerr << flashed.error() << "\n";
+      return 1;
+    }
+    std::cout << flashed.value() << "\n";
+    return 0;
+  }
+
+  if (subcommand == "setup-uno-q") {
+    std::string host;
+    (void)take_option(args, "--host", "", host);
+    auto configured =
+        peripheral::setup_uno_q_bridge(host.empty() ? std::nullopt : std::optional<std::string>(host));
+    if (!configured.ok()) {
+      std::cerr << configured.error() << "\n";
+      return 1;
+    }
+    std::cout << "uno-q bridge configured\n";
+    return 0;
+  }
+
+  if (subcommand == "flash-nucleo") {
+    std::string firmware;
+    std::vector<std::string> flash_args = args;
+    (void)take_option(flash_args, "--firmware", "-f", firmware);
+    const bool execute = take_flag(flash_args, "--execute");
+    if (!flash_args.empty()) {
+      std::cerr << "usage: ghostclaw peripheral flash-nucleo [--firmware <file>] [--execute]\n";
+      return 1;
+    }
+
+    peripheral::PeripheralFlashOptions options;
+    options.board = "nucleo-f4";
+    options.execute = execute;
+    if (!firmware.empty()) {
+      options.firmware = firmware;
+    }
+
+    auto flashed = peripheral::flash_peripheral(options);
+    if (!flashed.ok()) {
+      std::cerr << flashed.error() << "\n";
+      return 1;
+    }
+    std::cout << flashed.value() << "\n";
+    return 0;
+  }
+
+  std::cerr << "unknown peripheral subcommand\n";
+  return 1;
+}
+
+int run_service(const std::vector<std::string> &args, const std::string &executable_path) {
+  auto status = service::handle_command(args, executable_path);
+  if (!status.ok()) {
+    std::cerr << status.error() << "\n";
+    return 1;
+  }
+  std::cout << status.value() << "\n";
+  return 0;
 }
 
 int run_channel(const std::vector<std::string> &args) {
@@ -560,6 +1160,7 @@ int run_channel(const std::vector<std::string> &args) {
     }
     return 0;
   }
+
   if (args[0] == "doctor") {
     for (const auto &name : manager->list_channels()) {
       auto *channel = manager->get_channel(name);
@@ -568,6 +1169,170 @@ int run_channel(const std::vector<std::string> &args) {
     }
     return 0;
   }
+
+  if (args[0] == "start") {
+    return run_daemon({});
+  }
+
+  if (args[0] == "bind-telegram") {
+    if (args.size() < 2) {
+      std::cerr << "usage: ghostclaw channel bind-telegram <identity>\n";
+      return 1;
+    }
+    auto mutable_cfg = cfg.value();
+    if (!mutable_cfg.channels.telegram.has_value()) {
+      std::cerr << "telegram is not configured\n";
+      return 1;
+    }
+    const std::string identity = common::trim(args[1]);
+    if (identity.empty()) {
+      std::cerr << "identity is required\n";
+      return 1;
+    }
+
+    auto &allowlist = mutable_cfg.channels.telegram->allowed_users;
+    if (std::find(allowlist.begin(), allowlist.end(), identity) == allowlist.end()) {
+      allowlist.push_back(identity);
+    }
+    auto saved = config::save_config(mutable_cfg);
+    if (!saved.ok()) {
+      std::cerr << saved.error() << "\n";
+      return 1;
+    }
+    std::cout << "bound telegram identity: " << identity << "\n";
+    return 0;
+  }
+
+  if (args[0] == "add") {
+    if (args.size() < 3) {
+      std::cerr << "usage: ghostclaw channel add <type> <json>\n";
+      return 1;
+    }
+    const std::string type = common::to_lower(common::trim(args[1]));
+    const std::string json = args[2];
+    auto mutable_cfg = cfg.value();
+
+    if (type == "telegram") {
+      config::TelegramConfig telegram;
+      telegram.bot_token = common::json_get_string(json, "bot_token");
+      telegram.allowed_users = common::json_get_string_array(json, "allowed_users");
+      if (telegram.bot_token.empty()) {
+        std::cerr << "telegram requires bot_token\n";
+        return 1;
+      }
+      mutable_cfg.channels.telegram = std::move(telegram);
+    } else if (type == "discord") {
+      config::DiscordConfig discord;
+      discord.bot_token = common::json_get_string(json, "bot_token");
+      discord.guild_id = common::json_get_string(json, "guild_id");
+      discord.allowed_users = common::json_get_string_array(json, "allowed_users");
+      if (discord.bot_token.empty()) {
+        std::cerr << "discord requires bot_token\n";
+        return 1;
+      }
+      mutable_cfg.channels.discord = std::move(discord);
+    } else if (type == "slack") {
+      config::SlackConfig slack;
+      slack.bot_token = common::json_get_string(json, "bot_token");
+      slack.channel_id = common::json_get_string(json, "channel_id");
+      slack.allowed_users = common::json_get_string_array(json, "allowed_users");
+      if (slack.bot_token.empty()) {
+        std::cerr << "slack requires bot_token\n";
+        return 1;
+      }
+      mutable_cfg.channels.slack = std::move(slack);
+    } else if (type == "matrix") {
+      config::MatrixConfig matrix;
+      matrix.homeserver = common::json_get_string(json, "homeserver");
+      matrix.access_token = common::json_get_string(json, "access_token");
+      matrix.room_id = common::json_get_string(json, "room_id");
+      if (matrix.homeserver.empty() || matrix.access_token.empty() || matrix.room_id.empty()) {
+        std::cerr << "matrix requires homeserver, access_token, and room_id\n";
+        return 1;
+      }
+      mutable_cfg.channels.matrix = std::move(matrix);
+    } else if (type == "imessage") {
+      config::IMessageConfig imessage;
+      imessage.allowed_contacts = common::json_get_string_array(json, "allowed_contacts");
+      mutable_cfg.channels.imessage = std::move(imessage);
+    } else if (type == "whatsapp") {
+      config::WhatsAppConfig whatsapp;
+      whatsapp.access_token = common::json_get_string(json, "access_token");
+      whatsapp.phone_number_id = common::json_get_string(json, "phone_number_id");
+      whatsapp.verify_token = common::json_get_string(json, "verify_token");
+      whatsapp.allowed_numbers = common::json_get_string_array(json, "allowed_numbers");
+      if (whatsapp.access_token.empty() || whatsapp.phone_number_id.empty() ||
+          whatsapp.verify_token.empty()) {
+        std::cerr << "whatsapp requires access_token, phone_number_id, and verify_token\n";
+        return 1;
+      }
+      mutable_cfg.channels.whatsapp = std::move(whatsapp);
+    } else if (type == "webhook") {
+      config::WebhookConfig webhook;
+      webhook.secret = common::json_get_string(json, "secret");
+      if (webhook.secret.empty()) {
+        std::cerr << "webhook requires secret\n";
+        return 1;
+      }
+      mutable_cfg.channels.webhook = std::move(webhook);
+    } else {
+      std::cerr << "unsupported channel type: " << type << "\n";
+      return 1;
+    }
+
+    auto saved = config::save_config(mutable_cfg);
+    if (!saved.ok()) {
+      std::cerr << saved.error() << "\n";
+      return 1;
+    }
+    std::cout << "channel configured: " << type << "\n";
+    return 0;
+  }
+
+  if (args[0] == "remove") {
+    if (args.size() < 2) {
+      std::cerr << "usage: ghostclaw channel remove <name>\n";
+      return 1;
+    }
+    const std::string name = common::to_lower(common::trim(args[1]));
+    auto mutable_cfg = cfg.value();
+    bool removed = false;
+
+    if (name == "telegram") {
+      removed = mutable_cfg.channels.telegram.has_value();
+      mutable_cfg.channels.telegram = std::nullopt;
+    } else if (name == "discord") {
+      removed = mutable_cfg.channels.discord.has_value();
+      mutable_cfg.channels.discord = std::nullopt;
+    } else if (name == "slack") {
+      removed = mutable_cfg.channels.slack.has_value();
+      mutable_cfg.channels.slack = std::nullopt;
+    } else if (name == "matrix") {
+      removed = mutable_cfg.channels.matrix.has_value();
+      mutable_cfg.channels.matrix = std::nullopt;
+    } else if (name == "imessage") {
+      removed = mutable_cfg.channels.imessage.has_value();
+      mutable_cfg.channels.imessage = std::nullopt;
+    } else if (name == "whatsapp") {
+      removed = mutable_cfg.channels.whatsapp.has_value();
+      mutable_cfg.channels.whatsapp = std::nullopt;
+    } else if (name == "webhook") {
+      removed = mutable_cfg.channels.webhook.has_value();
+      mutable_cfg.channels.webhook = std::nullopt;
+    } else {
+      std::cerr << "unknown channel: " << name << "\n";
+      return 1;
+    }
+
+    auto saved = config::save_config(mutable_cfg);
+    if (!saved.ok()) {
+      std::cerr << saved.error() << "\n";
+      return 1;
+    }
+    std::cout << (removed ? "removed" : "not found") << "\n";
+    return 0;
+  }
+
   std::cerr << "unknown channel subcommand\n";
   return 1;
 }
@@ -1070,7 +1835,7 @@ int run_integrations(std::vector<std::string> args) {
     }
     return 0;
   }
-  if (args[0] == "get" && args.size() >= 2) {
+  if ((args[0] == "get" || args[0] == "info") && args.size() >= 2) {
     auto item = registry.find(args[1]);
     if (!item.has_value()) {
       std::cerr << "integration not found\n";
@@ -1086,6 +1851,11 @@ int run_integrations(std::vector<std::string> args) {
 int run_config(const std::vector<std::string> &args) {
   if (args.empty() || args[0] == "show") {
     return run_status();
+  }
+
+  if (args[0] == "schema") {
+    std::cout << config::json_schema() << "\n";
+    return 0;
   }
 
   auto cfg = config::load_config();
@@ -1322,6 +2092,213 @@ int run_login(std::vector<std::string> args) {
   return 0;
 }
 
+int run_conway(std::vector<std::string> args) {
+  if (args.empty()) {
+    std::cerr << "usage: ghostclaw conway <subcommand>\n";
+    std::cerr << "  setup    Initialize Conway wallet and API key\n";
+    std::cerr << "  status   Show Conway credit balance and wallet address\n";
+    std::cerr << "  fund     Show deposit instructions to fund your wallet\n";
+    return 1;
+  }
+
+  const std::string subcommand = args[0];
+  args.erase(args.begin());
+
+  if (subcommand == "setup") {
+    std::cout << "Setting up Conway Terminal...\n";
+    // Run conway-terminal --provision to create wallet and API key
+    const int ret = std::system("npx conway-terminal --provision");
+    if (ret != 0) {
+      std::cerr << "Conway setup failed. Make sure Node.js is installed.\n";
+      std::cerr << "Install manually: npm install -g conway-terminal\n";
+      return 1;
+    }
+
+    // Try to read the generated API key and store it in config
+    const std::string conway_config_path =
+        common::expand_path("~/.conway/config.json");
+    if (std::filesystem::exists(conway_config_path)) {
+      std::ifstream conway_cfg(conway_config_path);
+      if (conway_cfg) {
+        std::stringstream buf;
+        buf << conway_cfg.rdbuf();
+        const std::string content = buf.str();
+
+        // Extract apiKey from JSON
+        std::size_t key_pos = content.find("\"apiKey\"");
+        if (key_pos != std::string::npos) {
+          const auto quote1 = content.find('"', key_pos + 8);
+          const auto quote2 = (quote1 != std::string::npos)
+                                  ? content.find('"', quote1 + 1)
+                                  : std::string::npos;
+          const auto quote3 = (quote2 != std::string::npos)
+                                  ? content.find('"', quote2 + 1)
+                                  : std::string::npos;
+          if (quote2 != std::string::npos && quote3 != std::string::npos) {
+            const std::string api_key = content.substr(quote2 + 1, quote3 - quote2 - 1);
+            if (!api_key.empty() && api_key.find("cnwy_") != std::string::npos) {
+              auto cfg = config::load_config();
+              if (cfg.ok()) {
+                cfg.value().conway.enabled = true;
+                cfg.value().conway.api_key = api_key;
+                const auto save_status = config::save_config(cfg.value());
+                if (save_status.ok()) {
+                  std::cout << "Conway API key saved to config.toml\n";
+                } else {
+                  std::cerr << "Warning: could not save Conway API key: "
+                            << save_status.error() << "\n";
+                  std::cout << "Add manually to config.toml:\n\n";
+                  std::cout << "[conway]\n";
+                  std::cout << "enabled = true\n";
+                  std::cout << "api_key = \"" << api_key << "\"\n";
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    std::cout << "\nConway setup complete!\n";
+    std::cout << "Run 'ghostclaw conway status' to verify your balance.\n";
+    return 0;
+  }
+
+  if (subcommand == "status") {
+    auto cfg = config::load_config();
+    if (!cfg.ok()) {
+      std::cerr << cfg.error() << "\n";
+      return 1;
+    }
+
+    const auto &conway = cfg.value().conway;
+    if (!conway.enabled && conway.api_key.empty()) {
+      std::cerr << "Conway is not configured.\n";
+      std::cerr << "Run 'ghostclaw conway setup' to initialize.\n";
+      return 1;
+    }
+
+    // Read wallet address
+    auto wallet = conway::read_wallet_address(conway);
+    if (wallet.ok()) {
+      std::cout << "Wallet: " << wallet.value() << "\n";
+    } else {
+      std::cout << "Wallet: not yet initialized (run 'ghostclaw conway setup')\n";
+    }
+
+    std::cout << "API key: " << (conway.api_key.empty() ? "(not set)" :
+                                  conway.api_key.substr(0, 8) + "...") << "\n";
+    std::cout << "API URL: " << conway.api_url << "\n";
+    std::cout << "Region: " << conway.default_region << "\n";
+    std::cout << "Survival monitoring: "
+              << (conway.survival_monitoring ? "enabled" : "disabled") << "\n";
+    if (conway.survival_monitoring) {
+      std::cout << "  Low compute threshold: $" << conway.low_compute_threshold_usd << "\n";
+      std::cout << "  Critical threshold: $" << conway.critical_threshold_usd << "\n";
+    }
+    std::cout << "\nFor live credit balance, use the agent:\n";
+    std::cout << "  ghostclaw agent -m \"check my Conway credits\"\n";
+    return 0;
+  }
+
+  if (subcommand == "fund") {
+    auto cfg = config::load_config();
+    if (!cfg.ok()) {
+      std::cerr << cfg.error() << "\n";
+      return 1;
+    }
+
+    const auto &conway = cfg.value().conway;
+    auto wallet = conway::read_wallet_address(conway);
+
+    std::cout << "To fund your Conway wallet with USDC:\n\n";
+    if (wallet.ok()) {
+      std::cout << "  Wallet address: " << wallet.value() << "\n\n";
+    }
+    std::cout << "Options:\n";
+    std::cout << "  1. Buy credits at: https://app.conway.tech\n";
+    std::cout << "  2. Send USDC (Base network) directly to your wallet address\n";
+    std::cout << "\nNetwork: Base (EVM, chain ID 8453)\n";
+    std::cout << "Token: USDC\n";
+    return 0;
+  }
+
+  std::cerr << "unknown conway subcommand: " << subcommand << "\n";
+  return 1;
+}
+
+int run_sovereign(std::vector<std::string> args) {
+  if (args.empty()) {
+    std::cerr << "usage: ghostclaw sovereign <subcommand>\n";
+    std::cerr << "  start    Start GhostClaw in sovereign mode with survival pressure\n";
+    std::cerr << "  status   Show survival tier, credits, and wallet\n";
+    std::cerr << "  fund     Show funding instructions\n";
+    return 1;
+  }
+
+  const std::string subcommand = args[0];
+  args.erase(args.begin());
+
+  auto cfg = config::load_config();
+  if (!cfg.ok()) {
+    std::cerr << cfg.error() << "\n";
+    return 1;
+  }
+
+  if (subcommand == "status") {
+    const auto &conway = cfg.value().conway;
+    if (!conway.enabled && conway.api_key.empty()) {
+      std::cerr << "Sovereign mode requires Conway. Run 'ghostclaw conway setup' first.\n";
+      return 1;
+    }
+
+    auto wallet = conway::read_wallet_address(conway);
+    std::cout << "Sovereign Mode Status\n";
+    std::cout << std::string(40, '-') << "\n";
+    if (wallet.ok()) {
+      std::cout << "Wallet: " << wallet.value() << "\n";
+    }
+    std::cout << "Survival monitoring: "
+              << (conway.survival_monitoring ? "active" : "inactive") << "\n";
+    if (conway.survival_monitoring) {
+      std::cout << "Tiers:\n";
+      std::cout << "  normal     > $" << conway.low_compute_threshold_usd << "\n";
+      std::cout << "  low_compute $" << conway.critical_threshold_usd
+                << " - $" << conway.low_compute_threshold_usd << "\n";
+      std::cout << "  critical   < $" << conway.critical_threshold_usd << "\n";
+      std::cout << "  dead        $0.00\n";
+    }
+    std::cout << "\nCheck live balance: ghostclaw agent -m \"check my Conway credits\"\n";
+    return 0;
+  }
+
+  if (subcommand == "start") {
+    const auto &conway = cfg.value().conway;
+    if (!conway.enabled || conway.api_key.empty()) {
+      std::cerr << "Sovereign mode requires Conway to be configured with an API key.\n";
+      std::cerr << "Run 'ghostclaw conway setup' first.\n";
+      return 1;
+    }
+
+    std::cout << "Starting GhostClaw in sovereign mode...\n";
+    std::cout << "The agent will autonomously monitor its Conway credit balance\n";
+    std::cout << "and adapt behavior based on survival tier.\n\n";
+
+    // Enable survival monitoring and start the agent
+    cfg.value().conway.survival_monitoring = true;
+    args.clear();
+    return run_agent(std::move(args));
+  }
+
+  if (subcommand == "fund") {
+    args.insert(args.begin(), "fund");
+    return run_conway(std::move(args));
+  }
+
+  std::cerr << "unknown sovereign subcommand: " << subcommand << "\n";
+  return 1;
+}
+
 int run_google(std::vector<std::string> args) {
   if (args.empty()) {
     std::cerr << "usage: ghostclaw google <subcommand>\n";
@@ -1410,6 +2387,7 @@ void print_help() {
   std::cout << BOLD << "  SERVICES" << RESET << "\n";
   std::cout << "  " << GREEN << "gateway" << RESET << DIM << "        Start HTTP/WebSocket API server" << RESET << "\n";
   std::cout << "  " << GREEN << "daemon" << RESET << DIM << "         Run as background daemon with channels" << RESET << "\n";
+  std::cout << "  " << GREEN << "service" << RESET << DIM << "        Manage background service lifecycle" << RESET << "\n";
   std::cout << "  " << GREEN << "migrate" << RESET << DIM << "        Import legacy settings into GhostClaw" << RESET << "\n";
   std::cout << "  " << GREEN << "multi" << RESET << DIM << "          Multi-agent team collaboration mode" << RESET << "\n";
   std::cout << "  " << GREEN << "channel" << RESET << DIM << "        Manage messaging channels (Telegram, Slack, etc)" << RESET << "\n\n";
@@ -1426,8 +2404,18 @@ void print_help() {
   std::cout << "  " << GREEN << "doctor" << RESET << DIM << "         Run health diagnostics" << RESET << "\n";
   std::cout << "  " << GREEN << "config show" << RESET << DIM << "    Display current configuration" << RESET << "\n\n";
 
+  std::cout << BOLD << "  CONWAY & SOVEREIGN MODE" << RESET << "\n";
+  std::cout << "  " << GREEN << "conway setup" << RESET << DIM << "   Initialize Conway wallet + API key" << RESET << "\n";
+  std::cout << "  " << GREEN << "conway status" << RESET << DIM << "  Show Conway wallet and credit info" << RESET << "\n";
+  std::cout << "  " << GREEN << "conway fund" << RESET << DIM << "    Show USDC deposit instructions" << RESET << "\n";
+  std::cout << "  " << GREEN << "sovereign start" << RESET << DIM << " Run agent in sovereign mode (survival pressure)" << RESET << "\n\n";
+
   std::cout << BOLD << "  OTHER" << RESET << "\n";
   std::cout << "  " << GREEN << "cron" << RESET << DIM << "           Manage scheduled tasks" << RESET << "\n";
+  std::cout << "  " << GREEN << "models" << RESET << DIM << "         Refresh/list provider model catalogs" << RESET << "\n";
+  std::cout << "  " << GREEN << "providers" << RESET << DIM << "      List provider IDs and aliases" << RESET << "\n";
+  std::cout << "  " << GREEN << "hardware" << RESET << DIM << "       Discover and inspect hardware devices" << RESET << "\n";
+  std::cout << "  " << GREEN << "peripheral" << RESET << DIM << "     Configure hardware peripherals" << RESET << "\n";
   std::cout << "  " << GREEN << "tts" << RESET << DIM << "            Text-to-speech" << RESET << "\n";
   std::cout << "  " << GREEN << "voice" << RESET << DIM << "          Voice control (wake word / push-to-talk)" << RESET << "\n";
   std::cout << "  " << GREEN << "message" << RESET << DIM << "        Send message to a channel" << RESET << "\n";
@@ -1550,6 +2538,12 @@ int run_cli(int argc, char **argv) {
   if (subcommand == "cron") {
     return run_cron(std::move(args));
   }
+  if (subcommand == "models") {
+    return run_models(std::move(args));
+  }
+  if (subcommand == "providers") {
+    return run_providers();
+  }
   if (subcommand == "channel") {
     return run_channel(std::move(args));
   }
@@ -1574,12 +2568,23 @@ int run_cli(int argc, char **argv) {
   if (subcommand == "google") {
     return run_google(std::move(args));
   }
+  if (subcommand == "conway") {
+    return run_conway(std::move(args));
+  }
+  if (subcommand == "sovereign") {
+    return run_sovereign(std::move(args));
+  }
+  if (subcommand == "hardware") {
+    return run_hardware(std::move(args));
+  }
+  if (subcommand == "peripheral") {
+    return run_peripheral(std::move(args));
+  }
   if (subcommand == "migrate") {
     return run_migrate(std::move(args));
   }
   if (subcommand == "service") {
-    std::cout << subcommand << " command is available but not yet fully implemented.\n";
-    return 0;
+    return run_service(args, argc > 0 && argv != nullptr ? argv[0] : "ghostclaw");
   }
 
   std::cerr << "Unknown command: " << subcommand << "\n";
