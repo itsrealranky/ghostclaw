@@ -1,14 +1,17 @@
 #include "test_framework.hpp"
 
 #include "ghostclaw/config/schema.hpp"
+#include "ghostclaw/providers/catalog.hpp"
 #include "ghostclaw/providers/compatible.hpp"
 #include "ghostclaw/providers/factory.hpp"
 #include "ghostclaw/providers/reliable.hpp"
 #include "ghostclaw/providers/traits.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <optional>
+#include <random>
 
 namespace {
 
@@ -100,6 +103,40 @@ void unset_test_env(const char *name) {
 #else
   unsetenv(name);
 #endif
+}
+
+struct ScopedEnvOverride {
+  explicit ScopedEnvOverride(std::string key, std::optional<std::string> value)
+      : key_(std::move(key)) {
+    if (const char *existing = std::getenv(key_.c_str()); existing != nullptr) {
+      old_value_ = std::string(existing);
+    }
+    if (value.has_value()) {
+      set_test_env(key_.c_str(), value->c_str());
+    } else {
+      unset_test_env(key_.c_str());
+    }
+  }
+
+  ~ScopedEnvOverride() {
+    if (old_value_.has_value()) {
+      set_test_env(key_.c_str(), old_value_->c_str());
+    } else {
+      unset_test_env(key_.c_str());
+    }
+  }
+
+private:
+  std::string key_;
+  std::optional<std::string> old_value_;
+};
+
+std::filesystem::path make_temp_home() {
+  static std::mt19937_64 rng{std::random_device{}()};
+  const auto path = std::filesystem::temp_directory_path() /
+                    ("ghostclaw-provider-tests-home-" + std::to_string(rng()));
+  std::filesystem::create_directories(path);
+  return path;
 }
 
 } // namespace
@@ -453,6 +490,41 @@ void register_provider_tests(std::vector<ghostclaw::tests::TestCase> &tests) {
                                                                reliability, mock);
                     require(result.ok(), result.error());
                   }});
+
+  tests.push_back({"provider_catalog_alias_resolution", [] {
+                     const auto alias = p::find_provider("z.ai");
+                     require(alias.has_value(), "z.ai alias should resolve");
+                     require(alias->id == "zai", "z.ai should normalize to zai");
+                   }});
+
+  tests.push_back({"provider_model_catalog_refresh_and_cache", [] {
+                     const auto home = make_temp_home();
+                     ScopedEnvOverride env_home("HOME", home.string());
+                     ScopedEnvOverride env_cfg("GHOSTCLAW_CONFIG_PATH", std::nullopt);
+
+                     ghostclaw::config::Config cfg;
+                     cfg.default_provider = "openai";
+
+                     auto first = p::refresh_model_catalog(cfg, "openai", true);
+                     require(first.ok(), first.error());
+                     require(!first.value().models.empty(),
+                             "first refresh should return at least one model");
+                     require(!first.value().from_cache,
+                             "force refresh should produce non-cached result");
+
+                     auto second = p::refresh_model_catalog(cfg, "openai", false);
+                     require(second.ok(), second.error());
+                     require(!second.value().models.empty(),
+                             "cached refresh should return at least one model");
+                     require(second.value().from_cache,
+                             "second refresh should come from cache");
+                   }});
+
+  tests.push_back({"provider_model_catalog_unknown_provider", [] {
+                     ghostclaw::config::Config cfg;
+                     auto refreshed = p::refresh_model_catalog(cfg, "unknown-provider", true);
+                     require(!refreshed.ok(), "unknown provider should fail");
+                   }});
 
   // ============================================
   // NEW TESTS: SSE Parsing Edge Cases

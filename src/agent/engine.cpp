@@ -122,20 +122,10 @@ AgentEngine::AgentEngine(const config::Config &config, std::shared_ptr<providers
   approval_policy.ask = security::ExecAsk::Off;
   auto approval_manager = std::make_shared<security::ApprovalManager>(approval_policy);
   tool_executor_.set_approval_manager(approval_manager);
-
-  const auto skill_catalog = load_skill_catalog(workspace_);
-  skill_index_entries_ = build_skill_index_entries(skill_catalog);
-  skill_prompts_ = build_interactive_skill_prompts(skill_catalog);
-
-  // Merge in skill instructions passed from the runtime (e.g. bundled skills)
-  for (auto &instr : skill_instructions_) {
-    if (!instr.empty()) {
-      skill_prompts_.push_back(std::move(instr));
-    }
-  }
 }
 
 std::string AgentEngine::build_system_prompt() {
+  ensure_skill_catalog_loaded();
   return context_builder_.build_system_prompt(tools_.all_specs(), skill_index_entries_);
 }
 
@@ -163,6 +153,26 @@ std::string AgentEngine::build_memory_context(const std::string &message) {
   }
   out << "[End Memory Context]\n";
   return out.str();
+}
+
+void AgentEngine::ensure_skill_catalog_loaded() {
+  std::lock_guard<std::mutex> lock(skills_mutex_);
+  if (skills_loaded_) {
+    return;
+  }
+
+  const auto skill_catalog = load_skill_catalog(workspace_);
+  skill_index_entries_ = build_skill_index_entries(skill_catalog);
+  skill_prompts_ = build_interactive_skill_prompts(skill_catalog);
+
+  // Merge in skill instructions passed from the runtime (e.g. bundled skills).
+  for (auto &instr : skill_instructions_) {
+    if (!instr.empty()) {
+      skill_prompts_.push_back(std::move(instr));
+    }
+  }
+
+  skills_loaded_ = true;
 }
 
 std::string AgentEngine::build_relevant_skill_context(const std::string &message) const {
@@ -303,6 +313,7 @@ common::Result<AgentResponse> AgentEngine::process_with_tools(const std::string 
 
 common::Result<AgentResponse> AgentEngine::run(const std::string &message,
                                                 const AgentOptions &options) {
+  ensure_skill_catalog_loaded();
   const auto start = std::chrono::steady_clock::now();
   observability::record_agent_start(provider_->name(),
                                     options.model_override.value_or(config_.default_model));
@@ -359,6 +370,7 @@ common::Result<AgentResponse> AgentEngine::run(const std::string &message,
 
 common::Status AgentEngine::run_stream(const std::string &message, const StreamCallbacks &callbacks,
                                        const AgentOptions &options) {
+  ensure_skill_catalog_loaded();
   // Keep tool-capable runs on the existing full response path to avoid exposing intermediate tool payloads.
   if (!tools_.all_specs().empty()) {
     auto result = run(message, options);
@@ -442,6 +454,7 @@ common::Status AgentEngine::run_stream(const std::string &message, const StreamC
 }
 
 common::Status AgentEngine::run_interactive(const AgentOptions &options) {
+  ensure_skill_catalog_loaded();
   // ── ANSI Escape Codes ──
   constexpr const char *RESET     = "\033[0m";
   constexpr const char *BOLD      = "\033[1m";

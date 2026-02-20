@@ -165,17 +165,28 @@ TomlDocument::get_string_array(const std::string &key,
   return values_out;
 }
 
-Result<TomlDocument> parse_toml(const std::string &content) {
+Result<TomlDocument> parse_toml(std::string_view content) {
   TomlDocument document;
-  std::istringstream stream(content);
-  std::string line;
   std::string current_section;
   std::size_t line_number = 0;
 
-  while (std::getline(stream, line)) {
+  std::size_t cursor = 0;
+  while (cursor <= content.size()) {
+    const auto newline = content.find('\n', cursor);
+    const std::size_t line_begin = cursor;
+    const std::size_t line_end =
+        newline == std::string_view::npos ? content.size() : newline;
+    std::string line(content.substr(line_begin, line_end - line_begin));
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
     ++line_number;
     const std::string clean_line = trim(strip_comment(line));
     if (clean_line.empty()) {
+      if (newline == std::string_view::npos) {
+        break;
+      }
+      cursor = newline + 1;
       continue;
     }
 
@@ -185,6 +196,10 @@ Result<TomlDocument> parse_toml(const std::string &content) {
         return Result<TomlDocument>::failure("Invalid empty section at line " +
                                              std::to_string(line_number));
       }
+      if (newline == std::string_view::npos) {
+        break;
+      }
+      cursor = newline + 1;
       continue;
     }
 
@@ -203,9 +218,18 @@ Result<TomlDocument> parse_toml(const std::string &content) {
 
     const std::string full_key = current_section.empty() ? key : current_section + "." + key;
     document.values[full_key] = value;
+
+    if (newline == std::string_view::npos) {
+      break;
+    }
+    cursor = newline + 1;
   }
 
   return Result<TomlDocument>::success(std::move(document));
+}
+
+Result<TomlDocument> parse_toml(const std::string &content) {
+  return parse_toml(std::string_view(content));
 }
 
 std::string quote_toml_string(const std::string &value) {

@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <functional>
+#include <mutex>
 #include <memory>
 #include <optional>
 #include <string>
@@ -72,6 +73,7 @@ private:
   [[nodiscard]] bool detect_prompt_injection(const std::string &input) const;
   [[nodiscard]] bool detect_prompt_leak(const std::string &output) const;
   [[nodiscard]] std::string build_relevant_skill_context(const std::string &message) const;
+  void ensure_skill_catalog_loaded();
 
   const config::Config &config_;
   std::shared_ptr<providers::Provider> provider_;
@@ -83,6 +85,8 @@ private:
   std::vector<std::string> skill_instructions_;
   std::vector<std::string> skill_prompts_;
   std::vector<std::string> skill_index_entries_;
+  bool skills_loaded_ = false;
+  std::mutex skills_mutex_;
 };
 
 } // namespace ghostclaw::agent

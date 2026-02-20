@@ -3,6 +3,7 @@
 #include "ghostclaw/common/result.hpp"
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -23,6 +24,7 @@ struct TomlDocument {
 };
 
 [[nodiscard]] Result<TomlDocument> parse_toml(const std::string &content);
+[[nodiscard]] Result<TomlDocument> parse_toml(std::string_view content);
 [[nodiscard]] std::string quote_toml_string(const std::string &value);
 
 } // namespace ghostclaw::common

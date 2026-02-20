@@ -69,6 +69,17 @@ public:
                    const std::string &body, std::uint64_t timeout_ms,
                    const StreamChunkCallback &on_chunk) = 0;
   [[nodiscard]] virtual HttpResponse
+  get(const std::string &url, const std::unordered_map<std::string, std::string> &headers,
+      std::uint64_t timeout_ms) {
+    (void)url;
+    (void)headers;
+    (void)timeout_ms;
+    HttpResponse response;
+    response.network_error = true;
+    response.network_error_message = "GET not implemented";
+    return response;
+  }
+  [[nodiscard]] virtual HttpResponse
   head(const std::string &url, const std::unordered_map<std::string, std::string> &headers,
        std::uint64_t timeout_ms) = 0;
 };
@@ -86,6 +97,9 @@ public:
                    const std::unordered_map<std::string, std::string> &headers,
                    const std::string &body, std::uint64_t timeout_ms,
                    const StreamChunkCallback &on_chunk) override;
+  [[nodiscard]] HttpResponse
+  get(const std::string &url, const std::unordered_map<std::string, std::string> &headers,
+      std::uint64_t timeout_ms) override;
   [[nodiscard]] HttpResponse
   head(const std::string &url, const std::unordered_map<std::string, std::string> &headers,
        std::uint64_t timeout_ms) override;

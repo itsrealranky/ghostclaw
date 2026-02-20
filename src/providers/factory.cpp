@@ -12,6 +12,10 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -40,6 +44,23 @@ struct AnthropicRoute {
   bool use_bearer_auth = false;
   std::unordered_map<std::string, std::string> extra_headers;
 };
+
+enum class RouteKind {
+  None,
+  Compatible,
+  Anthropic,
+};
+
+struct PrecompiledRoute {
+  RouteKind kind = RouteKind::None;
+  std::string base_url;
+  bool require_api_key = true;
+  bool use_bearer_auth = false;
+  std::unordered_map<std::string, std::string> extra_headers;
+};
+
+std::mutex g_precompiled_routes_mutex;
+std::unordered_map<std::string, PrecompiledRoute> g_precompiled_routes;
 
 std::optional<std::string> read_env(const char *name) {
   if (name == nullptr || *name == '\0') {
@@ -107,6 +128,52 @@ std::string normalize_provider_id(const std::string &name) {
     return "cloudflare-ai-gateway";
   }
   return normalized;
+}
+
+const std::unordered_map<std::string, CompatibleRoute> &compatible_routes() {
+  static const std::unordered_map<std::string, CompatibleRoute> routes = {
+      {"openai-codex", {"https://api.openai.com/v1", true}},
+      {"opencode", {"https://opencode.ai/zen/v1", true}},
+      {"google", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
+      {"google-vertex", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
+      {"google-antigravity", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
+      {"google-gemini-cli", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
+      {"zai", {"https://api.z.ai/api/paas/v4", true}},
+      {"glm", {"https://open.bigmodel.cn/api/paas/v4", true}},
+      {"xai", {"https://api.x.ai/v1", true}},
+      {"grok", {"https://api.x.ai/v1", true}},
+      {"groq", {"https://api.groq.com/openai/v1", true}},
+      {"cerebras", {"https://api.cerebras.ai/v1", true}},
+      {"mistral", {"https://api.mistral.ai/v1", true}},
+      {"huggingface", {"https://router.huggingface.co/v1", true}},
+      {"moonshot", {"https://api.moonshot.ai/v1", true}},
+      {"qwen-portal", {"https://portal.qwen.ai/v1", true}},
+      {"venice", {"https://api.venice.ai/api/v1", true}},
+      {"together", {"https://api.together.xyz/v1", true}},
+      {"qianfan", {"https://qianfan.baidubce.com/v2", true}},
+      {"deepseek", {"https://api.deepseek.com/v1", true}},
+      {"fireworks", {"https://api.fireworks.ai/inference/v1", true}},
+      {"perplexity", {"https://api.perplexity.ai", true}},
+      {"cohere", {"https://api.cohere.ai/v1", true}},
+      {"nvidia", {"https://integrate.api.nvidia.com/v1", true}},
+      {"github-copilot", {"https://api.githubcopilot.com", true}},
+      {"vllm", {"http://127.0.0.1:8000/v1", false}},
+      {"litellm", {"http://localhost:4000", false}},
+      {"cloudflare", {"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1", true}},
+  };
+  return routes;
+}
+
+const std::unordered_map<std::string, AnthropicRoute> &anthropic_routes() {
+  static const std::unordered_map<std::string, AnthropicRoute> routes = {
+      {"minimax", {"https://api.minimax.io/anthropic", false}},
+      {"xiaomi", {"https://api.xiaomimimo.com/anthropic", true}},
+      {"kimi-coding", {"https://api.moonshot.ai/anthropic", false}},
+      {"vercel-ai-gateway", {"https://ai-gateway.vercel.sh", false}},
+      {"cloudflare-ai-gateway",
+       {"https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/anthropic", false}},
+  };
+  return routes;
 }
 
 std::optional<std::string> resolve_env_api_key(const std::string &provider) {
@@ -184,6 +251,76 @@ common::Result<std::shared_ptr<Provider>> make_anthropic(
       name, api_key.value_or(""), base_url, http_client, use_bearer_auth, std::move(extra_headers)));
 }
 
+std::filesystem::path precompiled_state_path(const std::filesystem::path &workspace) {
+  return workspace / "cache" / "provider_state.cache";
+}
+
+std::optional<PrecompiledRoute> find_precompiled_route(const std::string &provider) {
+  std::lock_guard<std::mutex> lock(g_precompiled_routes_mutex);
+  const auto it = g_precompiled_routes.find(provider);
+  if (it == g_precompiled_routes.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+PrecompiledRoute build_precompiled_route(const std::string &provider) {
+  const std::string normalized = normalize_provider_id(provider);
+
+  const auto compatible_it = compatible_routes().find(normalized);
+  if (compatible_it != compatible_routes().end()) {
+    const auto &route = compatible_it->second;
+    return PrecompiledRoute{.kind = RouteKind::Compatible,
+                            .base_url = resolve_base_url(normalized, route.base_url),
+                            .require_api_key = route.require_api_key,
+                            .use_bearer_auth = false,
+                            .extra_headers = route.extra_headers};
+  }
+
+  const auto anthropic_it = anthropic_routes().find(normalized);
+  if (anthropic_it != anthropic_routes().end()) {
+    const auto &route = anthropic_it->second;
+    return PrecompiledRoute{.kind = RouteKind::Anthropic,
+                            .base_url = resolve_base_url(normalized, route.base_url),
+                            .require_api_key = true,
+                            .use_bearer_auth = route.use_bearer_auth,
+                            .extra_headers = route.extra_headers};
+  }
+
+  return PrecompiledRoute{};
+}
+
+common::Status persist_precompiled_routes(const std::filesystem::path &workspace,
+                                          const std::unordered_map<std::string, PrecompiledRoute> &routes) {
+  const auto path = precompiled_state_path(workspace);
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) {
+    return common::Status::error("failed to create provider cache directory: " + ec.message());
+  }
+
+  std::ofstream out(path, std::ios::trunc);
+  if (!out) {
+    return common::Status::error("failed to write provider state cache");
+  }
+
+  for (const auto &[provider, route] : routes) {
+    if (route.kind == RouteKind::None) {
+      continue;
+    }
+
+    const std::string kind = route.kind == RouteKind::Compatible ? "compatible" : "anthropic";
+    out << provider << '\t' << kind << '\t' << route.base_url << '\t'
+        << (route.require_api_key ? "1" : "0") << '\t'
+        << (route.use_bearer_auth ? "1" : "0") << '\n';
+  }
+
+  if (!out) {
+    return common::Status::error("failed to flush provider state cache");
+  }
+  return common::Status::success();
+}
+
 } // namespace
 
 common::Result<std::shared_ptr<Provider>>
@@ -192,9 +329,8 @@ create_provider(const std::string &name, const std::optional<std::string> &api_k
   const std::string normalized = normalize_provider_id(name);
   auto resolved_key = resolve_api_key(normalized, api_key);
 
-  // Fallback to ChatGPT OAuth tokens for OpenAI providers when no API key found
-  if (!resolved_key.has_value() &&
-      (normalized == "openai" || normalized == "openai-codex")) {
+  // Fallback to OAuth tokens for OpenAI providers when no API key found.
+  if (!resolved_key.has_value() && (normalized == "openai" || normalized == "openai-codex")) {
     if (auth::has_valid_tokens()) {
       auto token = auth::get_valid_access_token(*http_client);
       if (token.ok()) {
@@ -220,60 +356,37 @@ create_provider(const std::string &name, const std::optional<std::string> &api_k
         std::make_shared<OllamaProvider>(http_client));
   }
   if (normalized == "synthetic") {
-    return common::Result<std::shared_ptr<Provider>>::success(
-        std::make_shared<SyntheticProvider>());
+    return common::Result<std::shared_ptr<Provider>>::success(std::make_shared<SyntheticProvider>());
   }
 
-  static const std::unordered_map<std::string, CompatibleRoute> compatible_routes = {
-      {"openai-codex", {"https://api.openai.com/v1", true}},
-      {"opencode", {"https://opencode.ai/zen/v1", true}},
-      {"google", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
-      {"google-vertex", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
-      {"google-antigravity", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
-      {"google-gemini-cli", {"https://generativelanguage.googleapis.com/v1beta/openai", true}},
-      {"zai", {"https://api.z.ai/api/paas/v4", true}},
-      {"glm", {"https://open.bigmodel.cn/api/paas/v4", true}},
-      {"xai", {"https://api.x.ai/v1", true}},
-      {"grok", {"https://api.x.ai/v1", true}},
-      {"groq", {"https://api.groq.com/openai/v1", true}},
-      {"cerebras", {"https://api.cerebras.ai/v1", true}},
-      {"mistral", {"https://api.mistral.ai/v1", true}},
-      {"huggingface", {"https://router.huggingface.co/v1", true}},
-      {"moonshot", {"https://api.moonshot.ai/v1", true}},
-      {"qwen-portal", {"https://portal.qwen.ai/v1", true}},
-      {"venice", {"https://api.venice.ai/api/v1", true}},
-      {"together", {"https://api.together.xyz/v1", true}},
-      {"qianfan", {"https://qianfan.baidubce.com/v2", true}},
-      {"deepseek", {"https://api.deepseek.com/v1", true}},
-      {"fireworks", {"https://api.fireworks.ai/inference/v1", true}},
-      {"perplexity", {"https://api.perplexity.ai", true}},
-      {"cohere", {"https://api.cohere.ai/v1", true}},
-      {"nvidia", {"https://integrate.api.nvidia.com/v1", true}},
-      {"github-copilot", {"https://api.githubcopilot.com", true}},
-      {"vllm", {"http://127.0.0.1:8000/v1", false}},
-      {"litellm", {"http://localhost:4000", false}},
-      {"cloudflare", {"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1", true}},
-  };
+  if (const auto precompiled = find_precompiled_route(normalized); precompiled.has_value()) {
+    if (precompiled->kind == RouteKind::Compatible) {
+      return make_compatible(normalized, precompiled->base_url, resolved_key, http_client,
+                             precompiled->require_api_key, precompiled->extra_headers);
+    }
+    if (precompiled->kind == RouteKind::Anthropic) {
+      if (normalized == "cloudflare-ai-gateway" &&
+          (precompiled->base_url.find("<account_id>") != std::string::npos ||
+           precompiled->base_url.find("<gateway_id>") != std::string::npos)) {
+        return common::Result<std::shared_ptr<Provider>>::failure(
+            "cloudflare-ai-gateway requires CLOUDFLARE_AI_GATEWAY_BASE_URL "
+            "(for example https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/anthropic)");
+      }
+      return make_anthropic(normalized, precompiled->base_url, resolved_key, http_client,
+                            precompiled->use_bearer_auth, precompiled->extra_headers);
+    }
+  }
 
-  static const std::unordered_map<std::string, AnthropicRoute> anthropic_routes = {
-      {"minimax", {"https://api.minimax.io/anthropic", false}},
-      {"xiaomi", {"https://api.xiaomimimo.com/anthropic", true}},
-      {"kimi-coding", {"https://api.moonshot.ai/anthropic", false}},
-      {"vercel-ai-gateway", {"https://ai-gateway.vercel.sh", false}},
-      {"cloudflare-ai-gateway",
-       {"https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/anthropic", false}},
-  };
-
-  const auto compatible_it = compatible_routes.find(normalized);
-  if (compatible_it != compatible_routes.end()) {
+  const auto compatible_it = compatible_routes().find(normalized);
+  if (compatible_it != compatible_routes().end()) {
     const auto &route = compatible_it->second;
     const std::string base_url = resolve_base_url(normalized, route.base_url);
     return make_compatible(normalized, base_url, resolved_key, http_client, route.require_api_key,
                            route.extra_headers);
   }
 
-  const auto anthropic_it = anthropic_routes.find(normalized);
-  if (anthropic_it != anthropic_routes.end()) {
+  const auto anthropic_it = anthropic_routes().find(normalized);
+  if (anthropic_it != anthropic_routes().end()) {
     const auto &route = anthropic_it->second;
     const std::string base_url = resolve_base_url(normalized, route.base_url);
     if (normalized == "cloudflare-ai-gateway" &&
@@ -290,7 +403,8 @@ create_provider(const std::string &name, const std::optional<std::string> &api_k
   const std::string trimmed_name = common::trim(name);
   if (common::starts_with(common::to_lower(trimmed_name), "custom:")) {
     const std::string url = common::trim(trimmed_name.substr(7));
-    if (url.empty() || (!common::starts_with(url, "http://") && !common::starts_with(url, "https://"))) {
+    if (url.empty() ||
+        (!common::starts_with(url, "http://") && !common::starts_with(url, "https://"))) {
       return common::Result<std::shared_ptr<Provider>>::failure(
           "Custom provider requires URL format custom:https://...");
     }
@@ -324,6 +438,39 @@ common::Result<std::shared_ptr<Provider>> create_reliable_provider(
                                                      reliability.provider_retries,
                                                      reliability.provider_backoff_ms);
   return common::Result<std::shared_ptr<Provider>>::success(std::move(reliable));
+}
+
+common::Status precompile_provider_state(const config::Config &config,
+                                         const std::filesystem::path &workspace) {
+  std::set<std::string> providers_to_precompile;
+  providers_to_precompile.insert(normalize_provider_id(config.default_provider));
+  for (const auto &fallback : config.reliability.fallback_providers) {
+    providers_to_precompile.insert(normalize_provider_id(fallback));
+  }
+
+  std::unordered_map<std::string, PrecompiledRoute> local;
+  for (const auto &provider : providers_to_precompile) {
+    auto route = build_precompiled_route(provider);
+    if (route.kind == RouteKind::None) {
+      continue;
+    }
+    local[provider] = std::move(route);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(g_precompiled_routes_mutex);
+    g_precompiled_routes = local;
+  }
+
+  if (workspace.empty()) {
+    return common::Status::success();
+  }
+  return persist_precompiled_routes(workspace, local);
+}
+
+void clear_precompiled_provider_state() {
+  std::lock_guard<std::mutex> lock(g_precompiled_routes_mutex);
+  g_precompiled_routes.clear();
 }
 
 } // namespace ghostclaw::providers

@@ -1,0 +1,68 @@
+GhostClaw Feature Parity and Upgrade Roadmap
+
+Completed in this change
+
+- Added full CLI command groups:
+  - providers
+  - models refresh [--provider <id>] [--force]
+  - hardware discover|introspect|info
+  - peripheral list|add|flash|setup-uno-q|flash-nucleo
+- Upgraded service from placeholder to working lifecycle commands:
+  - install, start, stop, status, uninstall
+- Expanded channel commands:
+  - start, bind-telegram, add, remove, list, doctor
+- Expanded cron commands:
+  - add, add-at, add-every, once, pause, resume, remove, list
+- Added machine-readable config schema output:
+  - ghostclaw config schema
+- Added provider and model catalog module with caching under workspace.
+- Upgraded model catalog refresh to live provider discovery with per-provider auth and cache fallback.
+- Replaced generic peripheral flashing with board-aware workflows and firmware artifact validation:
+  - arduino-uno-q (.hex)
+  - nucleo-f4 (.bin)
+  - esp32 (.bin)
+- Upgraded service integration with native user-service support:
+  - launchd user agents (macOS)
+  - systemd --user units (Linux)
+  - managed-process fallback when native backend is unavailable
+- Added startup-path optimization primitives:
+  - lazy provider initialization
+  - lazy memory backend initialization
+  - lazy skill catalog loading
+  - memory-mapped config file reads
+  - precompiled provider route state cache
+- Added test coverage for new CLI features.
+
+Current startup benchmark snapshot (measured February 20, 2026 on local macOS arm64)
+
+- Warm `ghostclaw --help`: median 0.03s across 20 runs.
+- Pseudo-cold `ghostclaw --help` (fresh copied binary path): median 0.25s across 10 runs.
+
+Next performance push toward sub-5ms startup
+
+1. Move CLI command routing to a zero-allocation fast path before any optional subsystem setup.
+2. Split runtime construction into strict command classes:
+   - lightweight commands (`--help`, `version`, `config-path`) must avoid all runtime/service/provider setup.
+   - heavy commands (`agent`, `gateway`, `daemon`) may initialize runtime subsystems.
+3. Replace TOML parse for hot-read keys with a precompiled binary config index:
+   - write index on config save
+   - mmap the index on startup
+4. Add static provider route table generation at build time and remove runtime route-map construction.
+5. Add microbenchmark CI gate:
+   - fail build if warm startup regresses by >10%
+   - publish trend lines for startup p50/p95.
+
+Immediate hardening priorities
+
+1. Add command-level e2e tests for long-running service and scheduler pause/resume persistence.
+2. Add telemetry hooks for model catalog freshness, hardware detection quality, and peripheral command outcomes.
+3. Add deterministic integration tests for launchd/systemd backend selection and fallback behavior.
+4. Add failure-injection tests for model catalog network errors and auth error fallback-to-cache behavior.
+5. Add peripheral flash dry-run and execute-path tests per board profile.
+
+Quality gates
+
+- Keep all command additions covered by tests.
+- Keep backward compatibility for existing config keys.
+- Keep non-interactive behavior deterministic for automation.
+- Keep command outputs script-friendly (stable text for CI parsing).

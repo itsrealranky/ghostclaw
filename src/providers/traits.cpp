@@ -4,6 +4,7 @@
 
 #include <curl/curl.h>
 
+#include <mutex>
 #include <regex>
 #include <sstream>
 
@@ -363,9 +364,12 @@ std::string ProviderError::to_string() const {
   return stream.str();
 }
 
-CurlHttpClient::CurlHttpClient() { curl_global_init(CURL_GLOBAL_DEFAULT); }
+CurlHttpClient::CurlHttpClient() {
+  static std::once_flag curl_init_once;
+  std::call_once(curl_init_once, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+}
 
-CurlHttpClient::~CurlHttpClient() { curl_global_cleanup(); }
+CurlHttpClient::~CurlHttpClient() = default;
 
 HttpResponse CurlHttpClient::post_json(
     const std::string &url, const std::unordered_map<std::string, std::string> &headers,
@@ -377,6 +381,12 @@ HttpResponse CurlHttpClient::post_json_stream(
     const std::string &url, const std::unordered_map<std::string, std::string> &headers,
     const std::string &body, const std::uint64_t timeout_ms, const StreamChunkCallback &on_chunk) {
   return execute_request(url, headers, body, false, timeout_ms, &on_chunk);
+}
+
+HttpResponse CurlHttpClient::get(const std::string &url,
+                                 const std::unordered_map<std::string, std::string> &headers,
+                                 const std::uint64_t timeout_ms) {
+  return execute_request(url, headers, std::nullopt, false, timeout_ms);
 }
 
 HttpResponse CurlHttpClient::head(const std::string &url,

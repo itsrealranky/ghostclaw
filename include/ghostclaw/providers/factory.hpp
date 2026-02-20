@@ -4,6 +4,7 @@
 #include "ghostclaw/config/schema.hpp"
 #include "ghostclaw/providers/traits.hpp"
 
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -18,5 +19,9 @@ create_reliable_provider(const std::string &primary_name, const std::optional<st
                          const config::ReliabilityConfig &reliability,
                          std::shared_ptr<HttpClient> http_client =
                              std::make_shared<CurlHttpClient>());
+
+[[nodiscard]] common::Status precompile_provider_state(const config::Config &config,
+                                                       const std::filesystem::path &workspace);
+void clear_precompiled_provider_state();
 
 } // namespace ghostclaw::providers
