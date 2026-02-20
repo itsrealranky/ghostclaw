@@ -342,6 +342,9 @@ std::vector<std::string> ToolPolicyPipeline::expand_group(std::string_view group
         {"messaging", "group:messaging"},
         {"calendar", "group:calendar"},
         {"web", "group:web"},
+        {"conway", "group:conway"},
+        {"soul", "group:soul"},
+        {"profiler", "group:profiler"},
     };
     const auto alias_it = aliases.find(key);
     if (alias_it != aliases.end()) {
@@ -354,12 +357,16 @@ std::vector<std::string> ToolPolicyPipeline::expand_group(std::string_view group
       {"group:runtime", {"exec", "process"}},
       {"group:memory", {"memory_store", "memory_recall", "memory_forget"}},
       {"group:sessions", {"sessions", "subagents", "skills"}},
-      {"group:skills", {"skills"}},
+      {"group:skills", {"skills", "skill_discover", "skill_auto_install", "skill_create"}},
       {"group:ui", {"browser", "canvas"}},
       {"group:automation", {"cron", "gateway"}},
       {"group:messaging", {"message", "email", "notify", "reminder"}},
       {"group:calendar", {"calendar", "reminder"}},
       {"group:web", {"web_search", "web_fetch"}},
+      // Conway Cloud tools — use glob mcp_conway_* to match all Conway MCP tools
+      {"group:conway", {"mcp_conway_*"}},
+      {"group:soul", {"soul_update", "soul_reflect", "soul_read"}},
+      {"group:profiler", {"tool_profile_report", "self_optimize"}},
   };
 
   const auto it = groups.find(key);

@@ -17,12 +17,17 @@
 #include "ghostclaw/tools/builtin/reminder.hpp"
 #include "ghostclaw/tools/builtin/sessions.hpp"
 #include "ghostclaw/tools/builtin/shell.hpp"
+#include "ghostclaw/tools/builtin/profiler_tools.hpp"
+#include "ghostclaw/tools/builtin/skill_agent.hpp"
 #include "ghostclaw/tools/builtin/skills.hpp"
+#include "ghostclaw/tools/builtin/soul.hpp"
 #include "ghostclaw/tools/builtin/web_fetch.hpp"
 #include "ghostclaw/tools/builtin/web_search.hpp"
 #include "ghostclaw/mcp/manager.hpp"
+#include "ghostclaw/profiler/tool_profiler.hpp"
 
 #include <iostream>
+#include <memory>
 
 namespace ghostclaw::tools {
 
@@ -114,6 +119,21 @@ ToolRegistry ToolRegistry::create_full(std::shared_ptr<security::SecurityPolicy>
   registry.register_tool(std::make_unique<SessionsSendTool>(session_store));
   registry.register_tool(std::make_unique<SessionsSpawnTool>(session_store));
   registry.register_tool(std::make_unique<SubagentsTool>(session_store));
+
+  // Soul tools — always register; only write when soul.enabled
+  registry.register_tool(std::make_unique<SoulUpdateTool>(config.soul));
+  registry.register_tool(std::make_unique<SoulReflectTool>(config.soul));
+  registry.register_tool(std::make_unique<SoulReadTool>());
+
+  // Autonomous skill acquisition tools
+  registry.register_tool(std::make_unique<SkillDiscoverTool>());
+  registry.register_tool(std::make_unique<SkillAutoInstallTool>());
+  registry.register_tool(std::make_unique<SkillCreateTool>());
+
+  // Tool profiler and self-optimization
+  auto profiler = std::make_shared<profiler::ToolProfiler>();
+  registry.register_tool(std::make_unique<ToolProfileReportTool>(profiler));
+  registry.register_tool(std::make_unique<SelfOptimizeTool>(profiler));
 
   // Register MCP tools from configured servers
   if (!config.mcp.servers.empty()) {
