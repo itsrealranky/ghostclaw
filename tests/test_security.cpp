@@ -363,7 +363,7 @@ void register_security_tests(std::vector<ghostclaw::tests::TestCase> &tests) {
                      const auto memory = sec::ToolPolicyPipeline::expand_group("group:memory");
                      require(memory.size() == 3, "group:memory should expand to 3 tools");
                      const auto skills = sec::ToolPolicyPipeline::expand_group("group:skills");
-                     require(skills.size() == 1, "group:skills should expand to 1 tool");
+                     require(skills.size() == 4, "group:skills should expand to 4 tools");
                      require(sec::ToolPolicyPipeline::normalize_tool_name("file_read") == "read",
                              "file_read alias normalization failed");
                    }});

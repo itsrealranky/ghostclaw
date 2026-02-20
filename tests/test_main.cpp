@@ -2,6 +2,8 @@
 
 #include <csignal>
 #include <iostream>
+#include <cstdlib>
+#include <string>
 
 void register_config_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_security_tests(std::vector<ghostclaw::tests::TestCase> &tests);
@@ -14,6 +16,7 @@ void register_gateway_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_sessions_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_channels_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_cli_onboard_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_cli_features_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_daemon_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_heartbeat_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_skills_integrations_tests(std::vector<ghostclaw::tests::TestCase> &tests);
@@ -34,10 +37,15 @@ void register_multi_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_daemon_schedules_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_mcp_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 void register_google_tests(std::vector<ghostclaw::tests::TestCase> &tests);
+void register_conway_soul_tests(std::vector<ghostclaw::tests::TestCase> &tests);
 
 int main() {
   // Ignore SIGPIPE to prevent crashes when output is piped
   std::signal(SIGPIPE, SIG_IGN);
+#if defined(__APPLE__)
+  // Avoid known instability in nano allocator during broad integration test runs.
+  setenv("MallocNanoZone", "0", 0);
+#endif
 
   std::vector<ghostclaw::tests::TestCase> tests;
   register_config_tests(tests);
@@ -51,6 +59,7 @@ int main() {
   register_sessions_tests(tests);
   register_channels_tests(tests);
   register_cli_onboard_tests(tests);
+  register_cli_features_tests(tests);
   register_daemon_tests(tests);
   register_heartbeat_tests(tests);
   register_skills_integrations_tests(tests);
@@ -71,11 +80,25 @@ int main() {
   register_daemon_schedules_tests(tests);
   register_mcp_tests(tests);
   register_google_tests(tests);
+  register_conway_soul_tests(tests);
+
+  const std::string filter =
+      std::getenv("GHOSTCLAW_TEST_FILTER") != nullptr ? std::getenv("GHOSTCLAW_TEST_FILTER") : "";
+  const bool verbose = std::getenv("GHOSTCLAW_TEST_VERBOSE") != nullptr &&
+                       std::string(std::getenv("GHOSTCLAW_TEST_VERBOSE")) == "1";
 
   std::size_t passed = 0;
   std::size_t failed = 0;
+  std::size_t executed = 0;
 
   for (const auto &test : tests) {
+    if (!filter.empty() && test.name.find(filter) == std::string::npos) {
+      continue;
+    }
+    if (verbose) {
+      std::cout << "[RUN] " << test.name << "\n";
+    }
+    ++executed;
     try {
       test.fn();
       ++passed;
@@ -85,7 +108,7 @@ int main() {
     }
   }
 
-  std::cout << "Ran " << tests.size() << " tests: " << passed << " passed, " << failed
+  std::cout << "Ran " << executed << " tests: " << passed << " passed, " << failed
             << " failed\n";
 
   return failed == 0 ? 0 : 1;

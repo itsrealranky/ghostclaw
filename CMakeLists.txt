@@ -94,6 +94,8 @@ add_library(ghostclaw_lib
   src/providers/synthetic.cpp
   src/providers/reliable.cpp
   src/providers/factory.cpp
+  src/providers/lazy.cpp
+  src/providers/catalog.cpp
   src/memory/memory.cpp
   src/memory/embedder.cpp
   src/memory/embedder_local.cpp
@@ -206,7 +208,10 @@ add_library(ghostclaw_lib
   src/tts/system.cpp
   src/voice/wake.cpp
   src/integrations/registry.cpp
+  src/hardware/module.cpp
+  src/peripheral/module.cpp
   src/migration/module.cpp
+  src/service/module.cpp
   src/observability/log_observer.cpp
   src/observability/multi_observer.cpp
   src/observability/factory.cpp
@@ -226,6 +231,12 @@ add_library(ghostclaw_lib
   src/multi/types.cpp
   src/multi/agent_pool.cpp
   src/multi/orchestrator.cpp
+  src/soul/manager.cpp
+  src/conway/module.cpp
+  src/profiler/tool_profiler.cpp
+  src/tools/builtin/soul.cpp
+  src/tools/builtin/skill_agent.cpp
+  src/tools/builtin/profiler_tools.cpp
 )
 
 if(APPLE)
@@ -295,6 +306,7 @@ add_executable(ghostclaw_tests
   tests/test_sessions.cpp
   tests/test_channels.cpp
   tests/test_cli_onboard.cpp
+  tests/test_cli_features.cpp
   tests/test_daemon.cpp
   tests/test_heartbeat.cpp
   tests/test_skills_integrations.cpp
@@ -315,6 +327,7 @@ add_executable(ghostclaw_tests
   tests/test_daemon_schedules.cpp
   tests/test_mcp.cpp
   tests/test_google.cpp
+  tests/test_conway_soul.cpp
 )
 target_link_libraries(ghostclaw_tests PRIVATE ghostclaw_lib)
 target_include_directories(ghostclaw_tests PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/tests)
