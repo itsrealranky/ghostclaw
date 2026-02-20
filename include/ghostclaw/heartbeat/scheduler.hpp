@@ -36,6 +36,7 @@ private:
 
   void run_loop();
   void execute_job(const CronJob &job);
+  void ensure_survival_jobs();
   [[nodiscard]] std::optional<ChannelDispatchPayload>
   parse_channel_dispatch_payload(const std::string &command) const;
   [[nodiscard]] common::Status dispatch_channel_payload(const ChannelDispatchPayload &payload) const;
