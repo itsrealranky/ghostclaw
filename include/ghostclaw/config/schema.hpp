@@ -255,6 +255,26 @@ struct McpConfig {
   std::vector<McpServerConfig> servers;
 };
 
+struct ConwayConfig {
+  bool enabled = false;
+  std::string api_key;
+  std::string wallet_path = "~/.conway/wallet.json";
+  std::string config_path = "~/.conway/config.json";
+  std::string api_url = "https://api.conway.tech";
+  std::string default_region = "eu-north";
+  bool survival_monitoring = false;
+  double low_compute_threshold_usd = 0.50;
+  double critical_threshold_usd = 0.10;
+};
+
+struct SoulConfig {
+  bool enabled = false;
+  std::string path = "SOUL.md";
+  bool git_versioned = true;
+  std::vector<std::string> protected_sections;
+  std::uint32_t max_reflections = 100;
+};
+
 struct GoogleConfig {
   std::string client_id;
   std::string client_secret;
@@ -292,6 +312,10 @@ struct Config {
   DaemonConfig daemon;
   McpConfig mcp;
   GoogleConfig google;
+  ConwayConfig conway;
+  SoulConfig soul;
 };
+
+[[nodiscard]] std::string json_schema();
 
 } // namespace ghostclaw::config
